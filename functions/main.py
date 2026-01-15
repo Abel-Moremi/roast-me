@@ -88,9 +88,14 @@ def roast_image(request):
             logger.info(f"Resized to: {new_size}")
 
         # Create the roast prompt
-        prompt = """You are a hilarious roast comedian. Look at this image and roast it mercilessly. 
-        Be creative, funny, and savage but keep it lighthearted and not genuinely mean-spirited. 
-        Focus on funny observations about what you see. Keep the roast to 2-3 sentences."""
+        prompt = """You are a legendary roast comedian with the sharp wit and timing of Kevin Hart, Dave Chappelle, and Katt Williams combined. 
+        Your job is to absolutely ROAST this image with no mercy - but keep it fun and lighthearted, never genuinely hurtful.
+        
+        Channel that Black comedian energy: be observational, animated, use vivid comparisons, and make it feel like you're performing on stage.
+        Point out EVERYTHING - the outfits, the vibes, the background, the poses, the energy, the whole situation.
+        Don't hold back on the jokes, but keep it playful. Make it quotable, make it memorable, make it HILARIOUS.
+        
+        Go off! Let it flow naturally - this ain't no 2-sentence limit, give them the full roast experience they deserve."""
         
         # Convert PIL Image to bytes
         img_byte_arr = BytesIO()
@@ -106,11 +111,38 @@ def roast_image(request):
                 types.Part.from_bytes(data=img_byte_arr, mime_type='image/png')
             ],
             config=types.GenerateContentConfig(
-                temperature=0.9,
-                max_output_tokens=200,
+                temperature=1.0,
+                max_output_tokens=2000,
+                safety_settings=[
+                    types.SafetySetting(
+                        category='HARM_CATEGORY_HARASSMENT',
+                        threshold='BLOCK_NONE'
+                    ),
+                    types.SafetySetting(
+                        category='HARM_CATEGORY_HATE_SPEECH',
+                        threshold='BLOCK_NONE'
+                    ),
+                    types.SafetySetting(
+                        category='HARM_CATEGORY_SEXUALLY_EXPLICIT',
+                        threshold='BLOCK_ONLY_HIGH'
+                    ),
+                    types.SafetySetting(
+                        category='HARM_CATEGORY_DANGEROUS_CONTENT',
+                        threshold='BLOCK_ONLY_HIGH'
+                    ),
+                ]
             )
         )
         logger.info("Received response from Gemini")
+        
+        # Check if response was blocked
+        if not response.candidates:
+            logger.warning("Response has no candidates - may be blocked by safety filters")
+            return jsonify({
+                'error': 'Response was blocked by safety filters. Try a different image.',
+                'success': False
+            }), 400, headers
+        
         roast = response.text
         
         logger.info(f"Returning roast: {roast[:50]}...")
