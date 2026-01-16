@@ -1,184 +1,113 @@
+"""
+Roast-Me Cloud Function
+Analyzes images and generates playful roasts with TTS audio.
+"""
+
 import functions_framework
 from flask import jsonify
 from google import genai
-from google.genai import types
-import os
-import base64
-from io import BytesIO
-from PIL import Image
 import logging
 
-# -----------------------
-# Logging
-# -----------------------
+from config import GEMINI_API_KEY, CORS_HEADERS
+from utils.image_utils import parse_image_from_request, resize_image, image_to_bytes
+from services.roast_service import generate_roast, build_narration_text
+from services.tts_service import generate_tts_audio, get_audio_mime_type
+
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# -----------------------
-# Gemini setup
-# -----------------------
-api_key = os.environ.get("GEMINI_API_KEY")
-if not api_key:
+# Initialize Gemini client
+if not GEMINI_API_KEY:
     logger.warning("GEMINI_API_KEY not set")
 
-client = genai.Client(api_key=api_key)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
-# -----------------------
-# CORS headers
-# -----------------------
-CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-}
 
-# -----------------------
-# Roast output schema
-# -----------------------
-ROAST_SCHEMA = types.Schema(
-    type=types.Type.OBJECT,
-    properties={
-        "overall_vibe": types.Schema(
-            type=types.Type.STRING,
-            description="Overall impression or vibe of the person/image"
-        ),
-        "roast_lines": types.Schema(
-            type=types.Type.ARRAY,
-            items=types.Schema(type=types.Type.STRING),
-            description="Individual roast jokes or observations"
-        ),
-        "confidence_rating": types.Schema(
-            type=types.Type.INTEGER,
-            description="Perceived confidence level from 0 to 10"
-        ),
-        "style_tags": types.Schema(
-            type=types.Type.ARRAY,
-            items=types.Schema(type=types.Type.STRING),
-            description="Tone/style tags such as 'awkward', 'bold', 'chaotic'"
-        ),
-        "one_liner": types.Schema(
-            type=types.Type.STRING,
-            description="Best single-line roast"
-        ),
-    },
-    required=[
-        "overall_vibe",
-        "roast_lines",
-        "confidence_rating",
-        "style_tags",
-        "one_liner",
-    ],
-)
-
-# -----------------------
-# Cloud Function
-# -----------------------
 @functions_framework.http
 def roast_image(request):
+    """
+    HTTP Cloud Function to generate roasts from images.
+    
+    Args:
+        request: Flask request object
+        
+    Returns:
+        JSON response with roast data and optional audio
+    """
+    # Handle CORS preflight
     if request.method == "OPTIONS":
         return ("", 204, CORS_HEADERS)
 
     try:
         logger.info("Roast request received")
 
-        if not api_key:
-            return jsonify({"error": "GEMINI_API_KEY not configured"}), 500, CORS_HEADERS
-
-        # -----------------------
-        # Parse image
-        # -----------------------
-        image = None
-        request_json = request.get_json(silent=True)
-
-        if request_json and "image" in request_json:
-            logger.info("Image received as base64")
-            image_base64 = request_json["image"]
-            if "," in image_base64:
-                image_base64 = image_base64.split(",")[1]
-            image_bytes = base64.b64decode(image_base64)
-            image = Image.open(BytesIO(image_bytes))
-
-        elif "image" in request.files:
-            logger.info("Image received as multipart upload")
-            image = Image.open(request.files["image"].stream)
-
-        if image is None:
-            return jsonify(
-                {"error": "No image provided (base64 JSON or multipart expected)"}
-            ), 400, CORS_HEADERS
-
-        # -----------------------
-        # Resize for performance
-        # -----------------------
-        max_dim = 1024
-        if image.width > max_dim or image.height > max_dim:
-            ratio = min(max_dim / image.width, max_dim / image.height)
-            image = image.resize(
-                (int(image.width * ratio), int(image.height * ratio)),
-                Image.Resampling.LANCZOS,
+        # Validate API key
+        if not GEMINI_API_KEY:
+            return _error_response(
+                "GEMINI_API_KEY not configured",
+                status_code=500
             )
 
-        # -----------------------
-        # Convert image to bytes
-        # -----------------------
-        buffer = BytesIO()
-        image.save(buffer, format="PNG")
-        img_bytes = buffer.getvalue()
+        # Parse and validate image
+        image = parse_image_from_request(request)
+        if image is None:
+            return _error_response(
+                "No image provided (base64 JSON or multipart expected)",
+                status_code=400
+            )
 
-        # -----------------------
-        # Prompt (schema-enforced)
-        # -----------------------
-        prompt = """
-You are a high-energy stand-up comedian doing a playful roast.
+        # Process image
+        image = resize_image(image)
+        image_bytes = image_to_bytes(image)
 
-Analyze the image and produce a structured roast.
+        # Generate roast
+        roast_data = generate_roast(client, image_bytes)
 
-RULES:
-- Output must strictly follow the provided JSON schema
-- No extra text, no markdown, no explanations
-- Be funny, observational, and animated
-- Keep it playful and lighthearted, not hateful
-"""
+        # Build narration text for TTS
+        narration_text = build_narration_text(roast_data)
 
-        # -----------------------
-        # Gemini call
-        # -----------------------
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[
-                prompt,
-                types.Part.from_bytes(data=img_bytes, mime_type="image/png"),
-            ],
-            config=types.GenerateContentConfig(
-                temperature=0.8,
-                max_output_tokens=800,
-                response_schema=ROAST_SCHEMA,
-                response_mime_type="application/json",
-            ),
-        )
+        # Generate TTS audio
+        audio_base64 = generate_tts_audio(client, narration_text)
 
-        if not response.candidates:
-            return jsonify(
-                {"error": "Response blocked by safety filters"}
-            ), 400, CORS_HEADERS
+        # Build response
+        response_data = {
+            "success": True,
+            "data": roast_data,
+        }
 
-        # -----------------------
-        # Structured output
-        # -----------------------
-        roast_data = response.parsed
+        if audio_base64:
+            response_data["audio"] = audio_base64
+            response_data["audioMimeType"] = get_audio_mime_type()
 
-        return jsonify(
-            {
-                "success": True,
-                "data": roast_data,
-            }
-        ), 200, CORS_HEADERS
+        return jsonify(response_data), 200, CORS_HEADERS
+
+    except ValueError as ve:
+        # Expected errors (validation, safety filters, etc.)
+        logger.warning(f"Validation error: {ve}")
+        return _error_response(str(ve), status_code=400)
 
     except Exception as e:
+        # Unexpected errors
         logger.exception("Roast failed")
-        return jsonify(
-            {
-                "success": False,
-                "error": str(e),
-            }
-        ), 500, CORS_HEADERS
+        return _error_response(
+            f"Internal server error: {str(e)}",
+            status_code=500
+        )
+
+
+def _error_response(message, status_code=500):
+    """
+    Create a standardized error response.
+    
+    Args:
+        message: Error message
+        status_code: HTTP status code
+        
+    Returns:
+        Flask response tuple
+    """
+    return jsonify({
+        "success": False,
+        "error": message,
+    }), status_code, CORS_HEADERS
