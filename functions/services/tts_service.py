@@ -32,10 +32,16 @@ def generate_tts_audio(client, text):
     try:
         logger.info("Generating TTS audio")
 
-        # Create TTS prompt with style instructions
+        # Create TTS prompt optimized for natural delivery
         tts_prompt = (
-            f"Say this in an energetic, playful, and slightly sarcastic tone "
-            f"like a stand-up comedian delivering a roast: {text}"
+            f"You're a stand-up comedian performing this roast live on stage. "
+            f"Speak naturally like you're having fun with someone in the crowd - "
+            f"confident, loose, playful energy. Let your voice smile. "
+            f"Honor every ellipsis (...) with a real pause for comic timing. "
+            f"Lean into the punchlines with emphasis but keep it smooth and conversational. "
+            f"Sound like you're genuinely enjoying this, not reading a script. "
+            f"Vary your pace and rhythm naturally - speed up for energy, slow down for effect. "
+            f"\n\nPerform this: {text}"
         )
 
         response = client.models.generate_content(
