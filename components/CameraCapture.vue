@@ -1,7 +1,7 @@
 <template>
-  <div class="fixed inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-    <!-- Camera View with Polaroid/CCTV Overlay -->
-    <div class="relative w-full max-w-2xl rounded-lg p-4 pointer-events-auto">
+  <div class="fixed inset-0 flex flex-col items-center justify-center pointer-events-auto z-10">
+    <!-- Camera View with CCTV Overlay -->
+    <div class="relative w-full max-w-2xl rounded-lg">
       <!-- Viewfinder Frame -->
       <div class="absolute inset-0 pointer-events-none z-10">
         <div class="absolute inset-8 border-4 border-red-500/50 rounded-lg">
@@ -34,7 +34,7 @@
     </div>
     
     <!-- Capture Button -->
-    <div class="mt-8 relative z-20 pointer-events-auto">
+    <div class="mt-8 relative z-20">
       <button
         @click="captureImage"
         :disabled="loading"
