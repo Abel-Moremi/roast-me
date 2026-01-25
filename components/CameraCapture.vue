@@ -1,45 +1,57 @@
 <template>
-  <div class="fixed inset-0 flex flex-col items-center justify-center bg-black">
-    <!-- Camera View -->
-    <div class="relative w-full h-full max-w-4xl">
+  <div class="fixed inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+    <!-- Camera View with Polaroid/CCTV Overlay -->
+    <div class="relative w-full max-w-2xl rounded-lg p-4 pointer-events-auto">
+      <!-- Viewfinder Frame -->
+      <div class="absolute inset-0 pointer-events-none z-10">
+        <div class="absolute inset-8 border-4 border-red-500/50 rounded-lg">
+          <div class="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-red-500"></div>
+          <div class="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-red-500"></div>
+          <div class="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-red-500"></div>
+          <div class="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-red-500"></div>
+        </div>
+        
+        <!-- CCTV Style Label -->
+        <div class="absolute top-4 left-4 bg-red-600 px-3 py-1 text-white text-xs font-mono">
+          <span class="inline-block w-2 h-2 bg-white rounded-full mr-2 animate-pulse"></span>
+          REC
+        </div>
+        
+        <!-- Capture Instructions -->
+        <div class="absolute bottom-4 left-0 right-0 text-center">
+          <p class="text-white text-sm bg-black/50 px-4 py-2 inline-block rounded-lg">
+            Position yourself in the frame
+          </p>
+        </div>
+      </div>
+      
       <video
         ref="videoRef"
-        class="w-full h-full object-cover"
+        class="w-full h-auto rounded-lg opacity-70"
         autoplay
         playsinline
       ></video>
+    </div>
+    
+    <!-- Capture Button -->
+    <div class="mt-8 relative z-20 pointer-events-auto">
+      <button
+        @click="captureImage"
+        :disabled="loading"
+        class="relative group"
+      >
+        <!-- Outer Ring -->
+        <div class="w-24 h-24 rounded-full border-4 border-white/50 flex items-center justify-center group-hover:border-red-500 transition-colors">
+          <!-- Inner Button -->
+          <div class="w-16 h-16 rounded-full bg-red-600 group-hover:bg-red-700 transition-colors flex items-center justify-center">
+            <span v-if="loading" class="text-white text-xs">...</span>
+          </div>
+        </div>
+      </button>
       
-      <!-- Overlay UI -->
-      <div class="absolute inset-0 pointer-events-none">
-        <!-- Top Bar -->
-        <div class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/50 to-transparent">
-          <h1 class="text-white text-2xl font-bold text-center">Roast Me</h1>
-        </div>
-        
-        <!-- Capture Frame -->
-        <div class="absolute inset-0 flex items-center justify-center p-8">
-          <div class="w-full max-w-md aspect-square border-4 border-white/30 rounded-lg"></div>
-        </div>
-      </div>
-      
-      <!-- Bottom Controls -->
-      <div class="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-black/50 to-transparent pointer-events-auto">
-        <div class="flex items-center justify-center gap-4">
-          <!-- Capture Button -->
-          <button
-            @click="captureImage"
-            :disabled="loading"
-            class="w-20 h-20 rounded-full bg-white border-4 border-gray-300 hover:bg-gray-100 active:scale-95 transition-transform disabled:opacity-50"
-          >
-            <div class="w-full h-full rounded-full bg-red-500"></div>
-          </button>
-        </div>
-        
-        <!-- Loading State -->
-        <div v-if="loading" class="mt-4 text-center">
-          <p class="text-white text-lg">Processing your roast...</p>
-        </div>
-      </div>
+      <p class="text-white text-sm mt-4 text-center">
+        {{ loading ? 'Processing...' : 'Click to capture' }}
+      </p>
     </div>
     
     <!-- Hidden Canvas -->
@@ -48,14 +60,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount, defineEmits } from 'vue'
 
 const videoRef = ref(null)
 const canvasRef = ref(null)
 const loading = ref(false)
 let stream = null
 
-const emit = defineEmits(['imageCaptured'])
+const emit = defineEmits(['imageCaptured', 'roastReceived'])
 const { loadMockData } = useMockRoast()
 
 onMounted(async () => {

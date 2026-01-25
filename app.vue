@@ -1,60 +1,81 @@
 <template>
-  <div class="w-screen h-screen bg-black dark:bg-gray-950">
+  <div class="w-screen h-screen relative overflow-hidden">
     <NuxtRouteAnnouncer />
     <ClientOnly>
-      <!-- Show camera if not captured yet -->
-      <CameraCapture 
-        v-if="!capturedImage"
-        @imageCaptured="handleImageCaptured"
-        @roastReceived="handleRoastReceived"
-      />
+      <!-- Comedy Club 3D Scene (always visible as background) -->
+      <div class="absolute inset-0 z-0">
+        <ComedyClubScene 
+          :capturedImage="capturedImage"
+          :isAnalyzing="isAnalyzing"
+          :roastReady="!!roastData"
+        />
+      </div>
       
-      <!-- Show results after capture -->
-      <div v-else class="flex items-center justify-center h-full p-8">
-        <div class="max-w-2xl w-full bg-white dark:bg-gray-800 rounded-lg p-8">
-          <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Your Roast</h2>
+      <!-- Camera Overlay (when not captured) -->
+      <div v-if="!capturedImage" class="absolute inset-0 pointer-events-none z-10">
+        <CameraCapture 
+          @imageCaptured="handleImageCaptured"
+          @roastReceived="handleRoastReceived"
+          class="pointer-events-auto"
+        />
+      </div>
+      
+      <!-- Results Overlay (after capture) -->
+      <div v-else-if="roastData" class="absolute inset-0 flex items-end justify-center p-8 pointer-events-none z-20">
+        <div class="max-w-2xl w-full bg-black/90 backdrop-blur-md border border-red-900/70 rounded-lg p-8 pointer-events-auto shadow-2xl">
+          <h2 class="text-2xl font-bold mb-4 text-red-500 text-center">THE ROAST</h2>
           
-          <img :src="capturedImage" alt="Captured" class="w-full rounded-lg mb-4" />
-          
-          <div v-if="roastData" class="space-y-4">
-            <p class="text-lg text-gray-700 dark:text-gray-300">
-              {{ roastData.data.overall_vibe }}
+          <div class="space-y-4">
+            <p class="text-lg text-gray-300 italic text-center">
+              "{{ roastData.data.overall_vibe }}"
             </p>
             
-            <div class="space-y-2">
+            <div class="space-y-2 max-h-48 overflow-y-auto">
               <p v-for="(line, index) in roastData.data.roast_lines" :key="index" 
-                 class="text-gray-600 dark:text-gray-400">
-                {{ line }}
+                 class="text-gray-400 text-sm">
+                • {{ line }}
               </p>
             </div>
             
-            <p class="text-xl font-bold text-gray-900 dark:text-white italic">
+            <p class="text-xl font-bold text-red-400 italic text-center mt-4">
               "{{ roastData.data.one_liner }}"
             </p>
             
             <!-- Audio Player -->
-            <div v-if="roastData.audio" class="mt-6 p-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
-              <div class="flex items-center gap-4">
+            <div v-if="roastData.audio" class="mt-6 p-4 bg-red-950/30 border border-red-900/50 rounded-lg">
+              <div class="flex items-center justify-center gap-4">
                 <button 
                   @click="toggleAudio"
                   :disabled="audioLoading"
-                  class="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                  class="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
                 >
                   <span v-if="audioLoading">Loading...</span>
-                  <span v-else-if="isPlaying">⏸ Pause</span>
+                  <span v-else-if="isPlaying">⏸ Pause Roast</span>
                   <span v-else>▶ Play Roast Audio</span>
                 </button>
-                <span v-if="audioError" class="text-red-500 text-sm">{{ audioError }}</span>
+                <span v-if="audioError" class="text-red-400 text-sm">{{ audioError }}</span>
               </div>
             </div>
+            
+            <div class="flex gap-4 mt-6">
+              <button 
+                @click="reset"
+                class="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                Roast Someone Else
+              </button>
+            </div>
           </div>
-          
-          <button 
-            @click="reset"
-            class="mt-6 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
-          >
-            Take Another Photo
-          </button>
+        </div>
+      </div>
+      
+      <!-- Analyzing State -->
+      <div v-else-if="isAnalyzing" class="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+        <div class="bg-black/90 backdrop-blur-md border border-red-900/70 rounded-lg p-8 shadow-2xl">
+          <div class="flex flex-col items-center gap-4">
+            <div class="w-16 h-16 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+            <p class="text-red-500 text-xl font-bold">ANALYZING YOUR FLAWS...</p>
+          </div>
         </div>
       </div>
     </ClientOnly>
@@ -66,6 +87,7 @@ import { ref } from 'vue'
 
 const capturedImage = ref(null)
 const roastData = ref(null)
+const isAnalyzing = ref(false)
 const audioLoading = ref(false)
 const isPlaying = ref(false)
 const audioError = ref(null)
@@ -75,12 +97,17 @@ let audioBuffer = null
 
 function handleImageCaptured(base64Image) {
   capturedImage.value = base64Image
+  isAnalyzing.value = true
 }
 
 function handleRoastReceived(data) {
-  roastData.value = data
-  audioError.value = null
-  audioBuffer = null
+  // 1.5 second delay for comedic timing
+  setTimeout(() => {
+    roastData.value = data
+    isAnalyzing.value = false
+    audioError.value = null
+    audioBuffer = null
+  }, 1500)
 }
 
 async function toggleAudio() {
