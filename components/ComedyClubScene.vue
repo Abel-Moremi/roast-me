@@ -626,63 +626,83 @@ function projectImageOnWall(imageDataUrl) {
   loader.load(imageDataUrl, (texture) => {
     photoTexture = texture
     
-    // Create photo plane
-    const aspect = texture.image.width / texture.image.height
-    const photoWidth = 5
-    const photoHeight = photoWidth / aspect
+    // Calculate dimensions based on image aspect ratio
+    const img = texture.image
+    const aspect = img.width / img.height
+    const baseWidth = 4
+    let canvasWidth, canvasHeight
     
-    const photoGeometry = new THREE.PlaneGeometry(photoWidth, photoHeight)
+    if (aspect > 1) {
+      // Landscape
+      canvasWidth = 1024
+      canvasHeight = Math.round(1024 / aspect)
+    } else {
+      // Portrait
+      canvasHeight = 1024
+      canvasWidth = Math.round(1024 * aspect)
+    }
+    
+    // Create canvas with photo and frame border
+    const canvas = document.createElement('canvas')
+    canvas.width = canvasWidth
+    canvas.height = canvasHeight
+    const ctx = canvas.getContext('2d')
+    
+    // Dark background
+    ctx.fillStyle = '#1a0a0a'
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight)
+    
+    // Gold ornate frame border
+    const borderSize = Math.min(canvasWidth, canvasHeight) * 0.03
+    ctx.strokeStyle = '#d4af37'
+    ctx.lineWidth = borderSize
+    ctx.strokeRect(borderSize / 2, borderSize / 2, canvasWidth - borderSize, canvasHeight - borderSize)
+    
+    ctx.strokeStyle = '#b8941e'
+    ctx.lineWidth = borderSize * 0.4
+    ctx.strokeRect(borderSize * 1.5, borderSize * 1.5, canvasWidth - borderSize * 3, canvasHeight - borderSize * 3)
+    
+    // Draw the captured image in the center
+    const padding = borderSize * 2.5
+    ctx.drawImage(img, padding, padding, canvasWidth - padding * 2, canvasHeight - padding * 2)
+    
+    // Create texture from canvas
+    const framedTexture = new THREE.CanvasTexture(canvas)
+    framedTexture.needsUpdate = true
+    
+    // Create photo plane with proper aspect ratio
+    const planeWidth = baseWidth
+    const planeHeight = baseWidth / aspect
+    const photoGeometry = new THREE.PlaneGeometry(planeWidth, planeHeight)
     photoMaterial = new THREE.MeshStandardMaterial({
-      map: texture,
-      transparent: false,
+      map: framedTexture,
       side: THREE.DoubleSide
     })
     
     const photoPlane = new THREE.Mesh(photoGeometry, photoMaterial)
     
-    // Create ornate frame around the photo
-    const frameThickness = 0.3
-    const frameMat = new THREE.MeshStandardMaterial({
-      color: 0xd4af37, // Gold color
-      metalness: 0.8,
-      roughness: 0.2
-    })
+    // Add hanging strings/wires
+    const stringMaterial = new THREE.MeshBasicMaterial({ color: 0x444444 })
     
-    // Top frame bar
-    const topFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(photoWidth + frameThickness * 2, frameThickness, 0.2),
-      frameMat
+    // Left string
+    const leftString = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.01, 0.01, 2.5, 8),
+      stringMaterial
     )
-    topFrame.position.set(0, photoHeight / 2 + frameThickness / 2, 0.1)
+    leftString.position.set(-planeWidth * 0.25, planeHeight / 2 + 1.25, 0.05)
     
-    // Bottom frame bar
-    const bottomFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(photoWidth + frameThickness * 2, frameThickness, 0.2),
-      frameMat
+    // Right string
+    const rightString = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.01, 0.01, 2.5, 8),
+      stringMaterial
     )
-    bottomFrame.position.set(0, -photoHeight / 2 - frameThickness / 2, 0.1)
+    rightString.position.set(planeWidth * 0.25, planeHeight / 2 + 1.25, 0.05)
     
-    // Left frame bar
-    const leftFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(frameThickness, photoHeight, 0.2),
-      frameMat
-    )
-    leftFrame.position.set(-photoWidth / 2 - frameThickness / 2, 0, 0.1)
-    
-    // Right frame bar
-    const rightFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(frameThickness, photoHeight, 0.2),
-      frameMat
-    )
-    rightFrame.position.set(photoWidth / 2 + frameThickness / 2, 0, 0.1)
-    
-    // Group photo and frame together
+    // Group photo and strings together
     photoGroup = new THREE.Group()
     photoGroup.add(photoPlane)
-    photoGroup.add(topFrame)
-    photoGroup.add(bottomFrame)
-    photoGroup.add(leftFrame)
-    photoGroup.add(rightFrame)
+    photoGroup.add(leftString)
+    photoGroup.add(rightString)
     photoGroup.userData.clickable = true // Mark as clickable
     
     // Start position - in front of camera (where user is)
@@ -697,7 +717,7 @@ function projectImageOnWall(imageDataUrl) {
     const startTime = Date.now()
     const duration = 1200 // 1.2 seconds
     const startPos = { x: 0, y: 2, z: 5 }
-    const endPos = { x: -3.5, y: 3, z: -5.8 } // Move to LEFT side of wall
+    const endPos = { x: -8.5, y: 3.5, z: -4.5 } // Far LEFT, well in front of curtains
     const startScale = 0.3
     const endScale = 1.0
     
@@ -728,7 +748,7 @@ function projectImageOnWall(imageDataUrl) {
         
         // Turn on spotlight
         spotlightPhoto.intensity = 3
-        spotlightPhoto.target.position.set(-3.5, 3, -6)
+        spotlightPhoto.target.position.set(-8.5, 3.5, -4.5)
         scene.add(spotlightPhoto.target)
       }
     }
@@ -837,7 +857,10 @@ function displayRoastText(roastData) {
   const texture = new THREE.CanvasTexture(canvas)
   texture.needsUpdate = true
   
-  // Create frame geometry - positioned to the right of the photo
+  // Create roast sheet with hanging strings
+  const roastGroup = new THREE.Group()
+  
+  // Create frame geometry
   const frameGeometry = new THREE.PlaneGeometry(2.5, 3.5)
   const frameMaterial = new THREE.MeshStandardMaterial({
     map: texture,
@@ -845,13 +868,33 @@ function displayRoastText(roastData) {
   })
   
   roastFrameMesh = new THREE.Mesh(frameGeometry, frameMaterial)
-  roastFrameMesh.position.set(1, 3, -5.8) // Center-right of wall, photo is at -3.5 (left)
   roastFrameMesh.userData.clickable = true // Mark as clickable
-  scene.add(roastFrameMesh)
+  roastGroup.add(roastFrameMesh)
+  
+  // Add hanging strings
+  const stringMaterial = new THREE.MeshBasicMaterial({ color: 0x444444 })
+  
+  const leftString = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.01, 0.01, 2.0, 8),
+    stringMaterial
+  )
+  leftString.position.set(-0.6, 1.75 + 1.0, 0.05)
+  roastGroup.add(leftString)
+  
+  const rightString = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.01, 0.01, 2.0, 8),
+    stringMaterial
+  )
+  rightString.position.set(0.6, 1.75 + 1.0, 0.05)
+  roastGroup.add(rightString)
+  
+  // Position far RIGHT, well in front of curtains
+  roastGroup.position.set(8.5, 3.5, -4.5)
+  scene.add(roastGroup)
   
   // Add spotlight for the text frame
   const textLight = new THREE.SpotLight(0xffffdd, 4)
-  textLight.position.set(1, 5, 0)
+  textLight.position.set(8.5, 5, 0)
   textLight.target = roastFrameMesh
   textLight.angle = Math.PI / 8
   textLight.penumbra = 0.4
