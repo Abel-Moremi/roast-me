@@ -154,8 +154,12 @@ async function sendToAPI(base64Image) {
     const mockResponse = await loadMockData()
     
     if (mockResponse) {
+      console.log('Mock data loaded successfully')
+      console.log('Audio field exists:', !!mockResponse.audio)
+      console.log('Audio length:', mockResponse.audio?.length || 0)
       emit('roastReceived', mockResponse)
     } else {
+      console.error('Failed to load mock data from file')
       // Fallback mock response if file loading fails
       const fallbackResponse = {
         success: true,
