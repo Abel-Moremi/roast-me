@@ -189,6 +189,18 @@ function initScene() {
   floor.receiveShadow = true
   scene.add(floor)
   
+  // Stage platform
+  createStage()
+  
+  // Stage curtains
+  createCurtains()
+  
+  // Audience crowd
+  createAudience()
+  
+  // Neon sign
+  createNeonSign()
+  
   // Microphone stand
   createMicrophoneStand()
   
@@ -260,40 +272,327 @@ function addBrickTexture() {
   backgroundWall.material.needsUpdate = true
 }
 
+function createStage() {
+  const stageGroup = new THREE.Group()
+  
+  // Stage platform - wooden stage
+  const stageHeight = 0.3
+  const stageWidth = 8
+  const stageDepth = 5
+  
+  const stageGeometry = new THREE.BoxGeometry(stageWidth, stageHeight, stageDepth)
+  const stageMaterial = new THREE.MeshStandardMaterial({
+    color: 0x4a3422,  // Dark wood color
+    roughness: 0.8,
+    metalness: 0.1
+  })
+  
+  const stage = new THREE.Mesh(stageGeometry, stageMaterial)
+  stage.position.set(0, stageHeight / 2, -2)  // Centered, slightly raised, toward back
+  stage.castShadow = true
+  stage.receiveShadow = true
+  stageGroup.add(stage)
+  
+  // Add wood grain texture effect
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 512
+  const ctx = canvas.getContext('2d')
+  
+  // Wood base color
+  ctx.fillStyle = '#4a3422'
+  ctx.fillRect(0, 0, 512, 512)
+  
+  // Wood grain lines
+  ctx.strokeStyle = '#3a2412'
+  ctx.lineWidth = 2
+  for (let i = 0; i < 30; i++) {
+    const y = Math.random() * 512
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    ctx.bezierCurveTo(128, y + Math.random() * 20 - 10, 384, y + Math.random() * 20 - 10, 512, y)
+    ctx.stroke()
+  }
+  
+  // Add some darker planks
+  ctx.strokeStyle = '#2a1812'
+  ctx.lineWidth = 1
+  for (let x = 64; x < 512; x += 128) {
+    ctx.beginPath()
+    ctx.moveTo(x, 0)
+    ctx.lineTo(x, 512)
+    ctx.stroke()
+  }
+  
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.repeat.set(4, 4)
+  
+  stage.material.map = texture
+  stage.material.needsUpdate = true
+  
+  scene.add(stageGroup)
+}
+
+function createCurtains() {
+  // Rich burgundy velvet material
+  const curtainMaterial = new THREE.MeshStandardMaterial({
+    color: 0x8b0000,  // Dark red
+    roughness: 0.7,
+    metalness: 0.1,
+    emissive: 0x220000,
+    emissiveIntensity: 0.05
+  })
+  
+  // Left curtain
+  const leftCurtainGeometry = new THREE.PlaneGeometry(3, 8)
+  const leftCurtain = new THREE.Mesh(leftCurtainGeometry, curtainMaterial)
+  leftCurtain.position.set(-8, 4, -5.5)
+  leftCurtain.rotation.y = Math.PI / 8  // Angle inward slightly
+  leftCurtain.receiveShadow = true
+  leftCurtain.castShadow = true
+  scene.add(leftCurtain)
+  
+  // Right curtain
+  const rightCurtainGeometry = new THREE.PlaneGeometry(3, 8)
+  const rightCurtain = new THREE.Mesh(rightCurtainGeometry, curtainMaterial.clone())
+  rightCurtain.position.set(8, 4, -5.5)
+  rightCurtain.rotation.y = -Math.PI / 8  // Angle inward slightly
+  rightCurtain.receiveShadow = true
+  rightCurtain.castShadow = true
+  scene.add(rightCurtain)
+  
+  // Add fabric fold texture to both curtains
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 1024
+  const ctx = canvas.getContext('2d')
+  
+  // Base velvet color
+  ctx.fillStyle = '#8b0000'
+  ctx.fillRect(0, 0, 512, 1024)
+  
+  // Vertical folds/pleats
+  for (let x = 0; x < 512; x += 40) {
+    const brightness = Math.sin(x / 40) * 30
+    ctx.fillStyle = `rgb(${139 + brightness}, 0, 0)`
+    ctx.fillRect(x, 0, 20, 1024)
+  }
+  
+  // Add shadow in folds
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
+  for (let x = 20; x < 512; x += 40) {
+    ctx.fillRect(x, 0, 10, 1024)
+  }
+  
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  
+  leftCurtain.material.map = texture
+  leftCurtain.material.needsUpdate = true
+  rightCurtain.material.map = texture
+  rightCurtain.material.needsUpdate = true
+}
+
+function createAudience() {
+  // Dark silhouette material for audience members
+  const audienceMaterial = new THREE.MeshStandardMaterial({
+    color: 0x0a0a0a,
+    roughness: 0.9,
+    metalness: 0.0
+  })
+  
+  const audienceGroup = new THREE.Group()
+  
+  // Create rows of audience members - positioned in front of camera view
+  const rows = 3
+  const membersPerRow = 12
+  
+  for (let row = 0; row < rows; row++) {
+    for (let i = 0; i < membersPerRow; i++) {
+      // Head
+      const headSize = 0.3 + Math.random() * 0.15
+      const headGeometry = new THREE.SphereGeometry(headSize, 16, 16)
+      const head = new THREE.Mesh(headGeometry, audienceMaterial)
+      
+      // Shoulders/body
+      const shoulderWidth = headSize * 2.5
+      const shoulderHeight = headSize * 1.8
+      const shoulderGeometry = new THREE.BoxGeometry(shoulderWidth, shoulderHeight, headSize * 1.2)
+      const shoulders = new THREE.Mesh(shoulderGeometry, audienceMaterial)
+      
+      // Position person - spread across bottom of view
+      const xSpread = 18
+      const xPos = (i / membersPerRow) * xSpread - xSpread / 2 + (Math.random() - 0.5) * 0.5
+      const zPos = 7 - row * 0.8 + Math.random() * 0.3  // Close to camera, rows going back
+      const baseY = 0.2 - row * 0.2  // Near bottom of view
+      
+      head.position.set(xPos, baseY + shoulderHeight + headSize * 0.7, zPos)
+      shoulders.position.set(xPos, baseY + shoulderHeight / 2, zPos)
+      
+      head.castShadow = true
+      shoulders.castShadow = true
+      
+      audienceGroup.add(head)
+      audienceGroup.add(shoulders)
+    }
+  }
+  
+  scene.add(audienceGroup)
+}
+
+function createNeonSign() {
+  // Create canvas with neon text
+  const canvas = document.createElement('canvas')
+  canvas.width = 2048
+  canvas.height = 768
+  const ctx = canvas.getContext('2d')
+  
+  // Clear background
+  ctx.fillStyle = 'rgba(0, 0, 0, 0)'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  
+  ctx.textAlign = 'center'
+  
+  // Top line - "GEMINI" in cyan/electric blue
+  const geminiColor = '#00ffff'
+  ctx.font = 'italic bold 220px Arial'
+  ctx.textBaseline = 'middle'
+  
+  // Glow layers for GEMINI
+  ctx.shadowColor = geminiColor
+  ctx.shadowBlur = 60
+  ctx.fillStyle = geminiColor
+  ctx.fillText('GEMINI', canvas.width / 2, 200)
+  
+  ctx.shadowBlur = 40
+  ctx.fillText('GEMINI', canvas.width / 2, 200)
+  
+  ctx.shadowBlur = 20
+  ctx.fillStyle = '#ffffff'
+  ctx.fillText('GEMINI', canvas.width / 2, 200)
+  
+  // Bottom line - "ROAST CLUB" in hot pink
+  const roastColor = '#ff0066'
+  ctx.font = 'bold 200px Arial'
+  
+  // Glow layers for ROAST CLUB
+  ctx.shadowColor = roastColor
+  ctx.shadowBlur = 70
+  ctx.fillStyle = roastColor
+  ctx.fillText('ROAST CLUB', canvas.width / 2, 520)
+  
+  ctx.shadowBlur = 45
+  ctx.fillText('ROAST CLUB', canvas.width / 2, 520)
+  
+  ctx.shadowBlur = 25
+  ctx.fillStyle = '#ffffff'
+  ctx.fillText('ROAST CLUB', canvas.width / 2, 520)
+  
+  // Add decorative stars/sparkles
+  ctx.shadowBlur = 15
+  ctx.fillStyle = '#ffff00'
+  ctx.font = 'bold 80px Arial'
+  ctx.fillText('★', 200, 200)
+  ctx.fillText('★', canvas.width - 200, 200)
+  
+  // Create texture from canvas
+  const texture = new THREE.CanvasTexture(canvas)
+  
+  // Create plane for sign - taller for two lines
+  const signGeometry = new THREE.PlaneGeometry(7, 2.8)
+  const signMaterial = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    opacity: 1,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  })
+  
+  const signMesh = new THREE.Mesh(signGeometry, signMaterial)
+  signMesh.position.set(0, 6.8, -4.5)
+  scene.add(signMesh)
+  
+  // Create glow plane (larger, behind the main sign)
+  const glowGeometry = new THREE.PlaneGeometry(8, 3.5)
+  const glowMaterial = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    opacity: 0.25,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  })
+  
+  const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial)
+  glowMesh.position.set(0, 6.8, -4.52)
+  scene.add(glowMesh)
+  
+  // Add bright point lights for environmental glow - cyan for top
+  const topLight = new THREE.PointLight(0x00ffff, 4, 10)
+  topLight.position.set(0, 7.5, -4)
+  scene.add(topLight)
+  
+  // Pink for bottom
+  const bottomLight = new THREE.PointLight(0xff0066, 5, 10)
+  bottomLight.position.set(0, 6.2, -4)
+  scene.add(bottomLight)
+  
+  const leftLight = new THREE.PointLight(0xff0066, 3, 8)
+  leftLight.position.set(-2, 6.5, -4)
+  scene.add(leftLight)
+  
+  const rightLight = new THREE.PointLight(0x00ffff, 3, 8)
+  rightLight.position.set(2, 6.5, -4)
+  scene.add(rightLight)
+}
+
+
 function createMicrophoneStand() {
   const standGroup = new THREE.Group()
   
-  // Base - larger and more grounded
-  const baseGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.08, 32)
+  // Shared metallic material
   const metalMaterial = new THREE.MeshStandardMaterial({
     color: 0x2a2a2a,
     metalness: 0.9,
     roughness: 0.15,
     envMapIntensity: 1.0
   })
+  
+  // Base - sits on floor
+  const baseHeight = 0.08
+  const baseGeometry = new THREE.CylinderGeometry(0.4, 0.4, baseHeight, 32)
   const base = new THREE.Mesh(baseGeometry, metalMaterial)
-  base.position.y = 0.04
+  base.position.y = baseHeight / 2  // Half height to sit on floor
   base.castShadow = true
   base.receiveShadow = true
   standGroup.add(base)
   
-  // Pole - taller
-  const poleGeometry = new THREE.CylinderGeometry(0.025, 0.025, 1.5, 16)
+  // Pole - connects to top of base
+  const poleHeight = 1.5
+  const poleGeometry = new THREE.CylinderGeometry(0.025, 0.025, poleHeight, 16)
   const pole = new THREE.Mesh(poleGeometry, metalMaterial)
-  pole.position.y = 0.83
+  pole.position.y = baseHeight + (poleHeight / 2)  // Base height + half pole height
   pole.castShadow = true
   standGroup.add(pole)
   
-  // Mic holder arm - angled toward center
-  const armGeometry = new THREE.CylinderGeometry(0.018, 0.018, 0.5, 16)
-  const arm = new THREE.Mesh(armGeometry, metalMaterial)
-  arm.position.set(0.22, 1.6, 0.1)
-  arm.rotation.z = Math.PI / 3.5
-  arm.rotation.y = -0.2 // Angle toward camera
-  arm.castShadow = true
-  standGroup.add(arm)
+  // Create arm+mic group that pivots from pole top
+  const poleTop = baseHeight + poleHeight
+  const armGroup = new THREE.Group()
+  armGroup.position.set(0, poleTop, 0)  // Pivot point at pole top
   
-  // Microphone - larger and more prominent
+  // Mic holder arm - positioned upward from pivot
+  const armLength = 0.5
+  const armGeometry = new THREE.CylinderGeometry(0.018, 0.018, armLength, 16)
+  const arm = new THREE.Mesh(armGeometry, metalMaterial)
+  arm.position.y = armLength / 2  // Half length up from pivot
+  arm.castShadow = true
+  armGroup.add(arm)
+  
+  // Microphone - at the top of the arm
   const micGeometry = new THREE.CapsuleGeometry(0.08, 0.2, 8, 16)
   const micMaterial = new THREE.MeshStandardMaterial({
     color: 0x1a1a1a,
@@ -302,14 +601,19 @@ function createMicrophoneStand() {
     envMapIntensity: 0.8
   })
   microphone = new THREE.Mesh(micGeometry, micMaterial)
-  microphone.position.set(0.42, 1.85, 0.15)
-  microphone.rotation.z = Math.PI / 7
-  microphone.rotation.y = -0.2
+  microphone.position.y = armLength  // At end of arm
   microphone.castShadow = true
-  standGroup.add(microphone)
+  armGroup.add(microphone)
   
-  // Position stand - moved forward and to the side
-  standGroup.position.set(2.5, 0, 4)
+  // Now rotate the entire arm+mic group
+  armGroup.rotation.z = Math.PI / 3.5
+  armGroup.rotation.y = -0.2
+  
+  standGroup.add(armGroup)
+  
+  // Position stand on the stage - right side
+  const stageHeight = 0.3
+  standGroup.position.set(2.5, stageHeight, -2.5)
   standGroup.castShadow = true
   scene.add(standGroup)
   
