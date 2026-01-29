@@ -7,6 +7,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 
 const props = defineProps({
   capturedImage: String,
@@ -26,6 +27,7 @@ let microphone, micStand, backgroundWall
 let photoTexture, photoMaterial
 let roastFrameMesh = null
 let photoGroup = null
+let comedian = null
 let animationId
 let clock
 let raycaster, mouse
@@ -201,8 +203,11 @@ function initScene() {
   // Neon sign
   createNeonSign()
   
+  // Animated comedian character
+  loadComedianModel()
+  
   // Microphone stand
-  createMicrophoneStand()
+  // createMicrophoneStand()  // Removed per user request
   
   console.log('Scene initialization complete. Objects in scene:', scene.children.length)
 }
@@ -548,6 +553,49 @@ function createNeonSign() {
   const rightLight = new THREE.PointLight(0x00ffff, 3, 8)
   rightLight.position.set(2, 6.5, -4)
   scene.add(rightLight)
+}
+
+function loadComedianModel() {
+  const loader = new GLTFLoader()
+  const stageHeight = 0.3
+  
+  loader.load(
+    '/comedian.glb',
+    (gltf) => {
+      comedian = gltf.scene
+      
+      // Position on center stage
+      comedian.position.set(0, stageHeight, -1.5)
+      comedian.rotation.y = 0  // Facing audience
+      comedian.scale.set(2.4, 2.4, 2.4)  // 20% smaller
+      
+      // Enable shadows
+      comedian.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true
+          child.receiveShadow = true
+        }
+      })
+      
+      // Play built-in animations if they exist
+      if (gltf.animations && gltf.animations.length > 0) {
+        comedian.mixer = new THREE.AnimationMixer(comedian)
+        gltf.animations.forEach((clip) => {
+          const action = comedian.mixer.clipAction(clip)
+          action.play()
+        })
+      }
+      
+      scene.add(comedian)
+      console.log('Comedian model loaded successfully')
+    },
+    (progress) => {
+      console.log('Loading comedian model:', (progress.loaded / progress.total * 100).toFixed(2) + '%')
+    },
+    (error) => {
+      console.error('Error loading comedian model:', error)
+    }
+  )
 }
 
 
@@ -938,9 +986,9 @@ function animate() {
     frameCount++
   }
   
-  // Subtle microphone sway
-  if (microphone) {
-    microphone.rotation.z = Math.PI / 6 + Math.sin(Date.now() * 0.001) * 0.02
+  // Update built-in model animations only
+  if (comedian && comedian.mixer) {
+    comedian.mixer.update(delta)
   }
   
   if (renderer && scene && camera) {
