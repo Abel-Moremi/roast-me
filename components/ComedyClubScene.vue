@@ -9,6 +9,7 @@ import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { useBlinking } from '@/composables/useBlinking'
+import { useJawMovement } from '@/composables/useJawMovement'
 
 // ============================================
 // PROPS & EMITS
@@ -30,6 +31,7 @@ const emit = defineEmits(['roastFrameClicked', 'photoClicked'])
 // COMPOSABLES
 // ============================================
 const { initializeBlinking, updateBlinking, eyeMorphTargets: blinkEyeMorphTargets } = useBlinking()
+const { initializeJawMovement, updateJawFromAudio, updateJawAnimation } = useJawMovement()
 
 // ============================================
 // DOM REFS
@@ -249,7 +251,7 @@ function initScene() {
   
   // Photo spotlight (initially off)
   spotlightPhoto = new THREE.SpotLight(0xffffff, 0)
-  spotlightPhoto.position.set(0, 5, 3)
+  spotlightPhoto.position.set(-8.5, 5, 0)
   spotlightPhoto.angle = Math.PI / 6
   spotlightPhoto.penumbra = 0.3
   spotlightPhoto.decay = 2
@@ -729,7 +731,9 @@ function loadComedianModel() {
         }
       })
       initializeBlinking(meshesArray)
+      initializeJawMovement(meshesArray)
       console.log('Blinking system initialized')
+      console.log('Jaw movement system initialized')
       
       // Play built-in animations if they exist
       if (gltf.animations && gltf.animations.length > 0) {
@@ -1098,13 +1102,13 @@ function displayRoastText(roastData) {
   rightString.position.set(0.6, 1.75 + 1.0, 0.05)
   roastGroup.add(rightString)
   
-  // Position far RIGHT, well in front of curtains
-  roastGroup.position.set(8.5, 3.5, -4.5)
+  // Position far LEFT, well in front of curtains
+  roastGroup.position.set(-8.5, 3.5, -4.5)
   scene.add(roastGroup)
   
   // Add spotlight for the text frame
   const textLight = new THREE.SpotLight(0xffffdd, 4)
-  textLight.position.set(8.5, 5, 0)
+  textLight.position.set(-8.5, 5, 0)
   textLight.target = roastFrameMesh
   textLight.angle = Math.PI / 8
   textLight.penumbra = 0.4
@@ -1359,17 +1363,32 @@ function updateLipSync() {
     // highFreq adds intensity for consonants
     const mouthOpenAmount = midFreq * 0.7 + highFreq * 0.3
     
+    // Calculate audio intensity for jaw movement
+    const audioIntensity = Math.max(midFreq, highFreq)
+    
+    // Update jaw movement based on audio
+    if (comedian) {
+      const meshesMap = {}
+      comedian.traverse((child) => {
+        if (child.isMesh && child.morphTargetInfluences) {
+          meshesMap[child.name || `mesh_${Object.keys(meshesMap).length}`] = child
+        }
+      })
+      updateJawFromAudio(0.016, audioIntensity, midFreq, highFreq) // ~60fps delta
+      updateJawAnimation(0.016, meshesMap)
+    }
+    
     // Blend expression based on audio intensity
     // Higher frequencies = more expressive
-    const audioIntensity = highFreq
+    const expressionIntensity = highFreq
     
     // Dynamically adjust expression based on audio characteristics
     // High intensity peaks could trigger laugh expression
-    if (audioIntensity > 0.6) {
+    if (expressionIntensity > 0.6) {
       if (currentExpression !== EXPRESSIONS.LAUGH && targetExpression !== EXPRESSIONS.LAUGH) {
         setExpression(EXPRESSIONS.LAUGH)
       }
-    } else if (audioIntensity > 0.3) {
+    } else if (expressionIntensity > 0.3) {
       if (currentExpression !== EXPRESSIONS.SMILE && targetExpression !== EXPRESSIONS.SMILE) {
         setExpression(EXPRESSIONS.SMILE)
       }
