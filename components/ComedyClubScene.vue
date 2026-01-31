@@ -8,6 +8,7 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { useBlinking } from '@/composables/useBlinking'
 
 // ============================================
 // PROPS & EMITS
@@ -24,6 +25,11 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['roastFrameClicked', 'photoClicked'])
+
+// ============================================
+// COMPOSABLES
+// ============================================
+const { initializeBlinking, updateBlinking, eyeMorphTargets: blinkEyeMorphTargets } = useBlinking()
 
 // ============================================
 // DOM REFS
@@ -714,6 +720,16 @@ function loadComedianModel() {
       Object.entries(mouthMorphTargets).forEach(([meshName, data]) => {
         console.log(`  ${meshName}: ${data.targetCount} targets (${data.targetNames.slice(0, 3).join(', ')}${data.targetCount > 3 ? '...' : ''})`)
       })
+
+      // Initialize blinking system
+      const meshesArray = []
+      comedian.traverse((child) => {
+        if (child.isMesh && child.morphTargetInfluences) {
+          meshesArray.push(child)
+        }
+      })
+      initializeBlinking(meshesArray)
+      console.log('Blinking system initialized')
       
       // Play built-in animations if they exist
       if (gltf.animations && gltf.animations.length > 0) {
@@ -1309,6 +1325,17 @@ function animate() {
   
   // Update facial expressions
   updateFacialExpression(delta)
+  
+  // Update blinking animation
+  if (comedian) {
+    const meshesMap = {}
+    comedian.traverse((child) => {
+      if (child.isMesh && child.morphTargetInfluences) {
+        meshesMap[child.name || `mesh_${Object.keys(meshesMap).length}`] = child
+      }
+    })
+    updateBlinking(delta, meshesMap)
+  }
   
   // Update lip-syncing based on audio
   if (props.audioPlaying && props.getAudioFrequencyData) {
