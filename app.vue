@@ -194,6 +194,15 @@ let pausedAt = 0
 let animationFrameId = null
 let isTransitioning = false
 
+// Audio state machine to track precise state
+const AUDIO_STATES = {
+  STOPPED: 'stopped',
+  PLAYING: 'playing',
+  PAUSED: 'paused',
+  LOADING: 'loading'
+}
+let audioState = AUDIO_STATES.STOPPED
+
 function handleImageCaptured(base64Image) {
   capturedImage.value = base64Image
   isAnalyzing.value = true
@@ -206,6 +215,7 @@ function handleRoastReceived(data) {
     isAnalyzing.value = false
     audioError.value = null
     audioBuffer = null
+    audioState = AUDIO_STATES.STOPPED
     pausedAt = 0
     currentTime.value = 0
     duration.value = 0
@@ -223,7 +233,11 @@ async function reRoast() {
     } catch (e) {
       // Source might already be stopped
     }
-    audioSource.disconnect()
+    try {
+      audioSource.disconnect()
+    } catch (e) {
+      // May already be disconnected
+    }
     audioSource = null
   }
   
@@ -234,6 +248,7 @@ async function reRoast() {
   
   // Clear current roast data and reset audio state
   roastData.value = null
+  audioState = AUDIO_STATES.STOPPED
   isPlaying.value = false
   audioBuffer = null
   audioError.value = null
@@ -253,8 +268,16 @@ async function reRoast() {
 }
 
 async function toggleAudio() {
-  if (isPlaying.value) {
+  // Guard against concurrent operations
+  if (audioLoading.value || isTransitioning) {
+    console.log('Audio operation already in progress')
+    return
+  }
+  
+  if (audioState === AUDIO_STATES.PLAYING) {
     pauseAudio()
+  } else if (audioState === AUDIO_STATES.PAUSED) {
+    await resumeAudio()
   } else {
     await playAudio()
   }
@@ -266,67 +289,42 @@ function formatTime(seconds) {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
-function seekAudio(event) {
+async function seekAudio(event) {
   if (!audioBuffer || audioLoading.value || isTransitioning) return
   
   const rect = event.currentTarget.getBoundingClientRect()
   const clickX = event.clientX - rect.left
   const percentage = clickX / rect.width
-  const seekTime = percentage * duration.value
+  const seekTime = Math.max(0, Math.min(percentage * duration.value, duration.value))
   
   isTransitioning = true
   
-  const wasPlaying = isPlaying.value
-  
-  // Stop and fully clean up current audio source
-  if (audioSource) {
-    try {
-      audioSource.stop()
-      audioSource.onended = null // Remove event handler
-    } catch (e) {
-      // Source might already be stopped
+  try {
+    const wasPlaying = audioState === AUDIO_STATES.PLAYING
+    const wasPaused = audioState === AUDIO_STATES.PAUSED
+    const previousState = audioState
+    
+    // Stop current playback and clean up
+    await cleanupAudioSource()
+    
+    // Update position
+    pausedAt = seekTime
+    currentTime.value = seekTime
+    
+    // Restore state after cleanup
+    if (wasPlaying) {
+      // Temporarily set to stopped during transition, then restart
+      audioState = AUDIO_STATES.STOPPED
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await startAudioPlayback()
+    } else if (wasPaused) {
+      // Preserve paused state after seeking
+      audioState = AUDIO_STATES.PAUSED
+    } else {
+      // Ensure we're in stopped state if not playing or paused
+      audioState = AUDIO_STATES.STOPPED
     }
-    audioSource.disconnect()
-    audioSource = null
-  }
-  
-  if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId)
-    animationFrameId = null
-  }
-  
-  // Update position
-  pausedAt = seekTime
-  currentTime.value = seekTime
-  
-  // Restart if was playing
-  if (wasPlaying) {
-    setTimeout(async () => {
-      if (!audioSource) {
-        // Recreate audio source and start from new position
-        audioSource = audioContext.createBufferSource()
-        audioSource.buffer = audioBuffer
-        audioSource.connect(audioContext.destination)
-        
-        audioSource.onended = () => {
-          console.log('Audio playback ended')
-          isPlaying.value = false
-          audioSource = null
-          pausedAt = 0
-          currentTime.value = 0
-          if (animationFrameId) {
-            cancelAnimationFrame(animationFrameId)
-            animationFrameId = null
-          }
-        }
-        
-        audioSource.start(0, pausedAt)
-        startTime = audioContext.currentTime - pausedAt
-        updateProgress()
-      }
-      isTransitioning = false
-    }, 20)
-  } else {
+  } finally {
     isTransitioning = false
   }
 }
@@ -337,56 +335,33 @@ async function skipBackward() {
   isTransitioning = true
   
   try {
-    const wasPlaying = isPlaying.value
-    const currentPos = wasPlaying ? (audioContext.currentTime - startTime) : pausedAt
+    const wasPlaying = audioState === AUDIO_STATES.PLAYING
+    const wasPaused = audioState === AUDIO_STATES.PAUSED
+    const previousState = audioState
+    const currentPos = audioState === AUDIO_STATES.PLAYING 
+      ? (audioContext.currentTime - startTime) 
+      : pausedAt
     const newTime = Math.max(0, currentPos - 10)
     
-    // Stop and fully clean up current audio source
-    if (audioSource) {
-      try {
-        audioSource.stop()
-        audioSource.onended = null // Remove event handler
-      } catch (e) {
-        // Source might already be stopped
-      }
-      audioSource.disconnect()
-      audioSource = null
-    }
-    
-    if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId)
-      animationFrameId = null
-    }
+    // Stop and clean up
+    await cleanupAudioSource()
     
     // Update position
     pausedAt = newTime
     currentTime.value = newTime
     
-    // Wait for complete cleanup
-    await new Promise(resolve => setTimeout(resolve, 20))
-    
-    // Only restart if was playing and we don't already have a source
-    if (wasPlaying && !audioSource) {
-      // Recreate audio source and start from new position
-      audioSource = audioContext.createBufferSource()
-      audioSource.buffer = audioBuffer
-      audioSource.connect(audioContext.destination)
-      
-      audioSource.onended = () => {
-        console.log('Audio playback ended')
-        isPlaying.value = false
-        audioSource = null
-        pausedAt = 0
-        currentTime.value = 0
-        if (animationFrameId) {
-          cancelAnimationFrame(animationFrameId)
-          animationFrameId = null
-        }
-      }
-      
-      audioSource.start(0, pausedAt)
-      startTime = audioContext.currentTime - pausedAt
-      updateProgress()
+    // Restore state after cleanup
+    if (wasPlaying) {
+      // Temporarily set to stopped during transition, then restart
+      audioState = AUDIO_STATES.STOPPED
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await startAudioPlayback()
+    } else if (wasPaused) {
+      // Preserve paused state after skipping
+      audioState = AUDIO_STATES.PAUSED
+    } else {
+      // Ensure we're in stopped state if not playing or paused
+      audioState = AUDIO_STATES.STOPPED
     }
   } finally {
     isTransitioning = false
@@ -399,59 +374,117 @@ async function skipForward() {
   isTransitioning = true
   
   try {
-    const wasPlaying = isPlaying.value
-    const currentPos = wasPlaying ? (audioContext.currentTime - startTime) : pausedAt
+    const wasPlaying = audioState === AUDIO_STATES.PLAYING
+    const wasPaused = audioState === AUDIO_STATES.PAUSED
+    const previousState = audioState
+    const currentPos = audioState === AUDIO_STATES.PLAYING 
+      ? (audioContext.currentTime - startTime) 
+      : pausedAt
     const newTime = Math.min(duration.value, currentPos + 10)
     
-    // Stop and fully clean up current audio source
-    if (audioSource) {
-      try {
-        audioSource.stop()
-        audioSource.onended = null // Remove event handler
-      } catch (e) {
-        // Source might already be stopped
-      }
-      audioSource.disconnect()
-      audioSource = null
-    }
-    
-    if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId)
-      animationFrameId = null
-    }
+    // Stop and clean up
+    await cleanupAudioSource()
     
     // Update position
     pausedAt = newTime
     currentTime.value = newTime
     
-    // Wait for complete cleanup
-    await new Promise(resolve => setTimeout(resolve, 20))
-    
-    // Only restart if was playing and we don't already have a source
-    if (wasPlaying && !audioSource) {
-      // Recreate audio source and start from new position
-      audioSource = audioContext.createBufferSource()
-      audioSource.buffer = audioBuffer
-      audioSource.connect(audioContext.destination)
-      
-      audioSource.onended = () => {
-        console.log('Audio playback ended')
-        isPlaying.value = false
-        audioSource = null
-        pausedAt = 0
-        currentTime.value = 0
-        if (animationFrameId) {
-          cancelAnimationFrame(animationFrameId)
-          animationFrameId = null
-        }
-      }
-      
-      audioSource.start(0, pausedAt)
-      startTime = audioContext.currentTime - pausedAt
-      updateProgress()
+    // Restore state after cleanup
+    if (wasPlaying) {
+      // Temporarily set to stopped during transition, then restart
+      audioState = AUDIO_STATES.STOPPED
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await startAudioPlayback()
+    } else if (wasPaused) {
+      // Preserve paused state after skipping
+      audioState = AUDIO_STATES.PAUSED
+    } else {
+      // Ensure we're in stopped state if not playing or paused
+      audioState = AUDIO_STATES.STOPPED
     }
   } finally {
     isTransitioning = false
+  }
+}
+
+async function cleanupAudioSource() {
+  // Cleanup audio source without changing high-level state
+  if (audioSource) {
+    try {
+      audioSource.stop()
+      audioSource.onended = null
+    } catch (e) {
+      // Source might already be stopped
+    }
+    try {
+      audioSource.disconnect()
+    } catch (e) {
+      // May already be disconnected
+    }
+    audioSource = null
+  }
+  
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId)
+    animationFrameId = null
+  }
+  
+  // Small delay for cleanup to complete
+  await new Promise(resolve => setTimeout(resolve, 5))
+}
+
+async function startAudioPlayback() {
+  // Internal function to start playback with proper state management
+  if (audioState === AUDIO_STATES.PLAYING) {
+    console.log('Already playing')
+    return
+  }
+  
+  if (!audioContext || !audioBuffer) {
+    console.error('AudioContext or AudioBuffer not ready')
+    return
+  }
+  
+  // Guard: ensure no source exists before creating new one
+  if (audioSource) {
+    console.warn('Audio source already exists, cleaning up first')
+    await cleanupAudioSource()
+  }
+  
+  try {
+    audioSource = audioContext.createBufferSource()
+    audioSource.buffer = audioBuffer
+    audioSource.connect(audioContext.destination)
+    
+    audioSource.onended = handleAudioEnded
+    
+    // Mark as playing before starting to avoid race conditions
+    audioState = AUDIO_STATES.PLAYING
+    isPlaying.value = true
+    
+    audioSource.start(0, pausedAt)
+    startTime = audioContext.currentTime - pausedAt
+    
+    updateProgress()
+    console.log('Audio playback started from:', pausedAt)
+  } catch (error) {
+    console.error('Failed to start audio playback:', error)
+    audioState = AUDIO_STATES.STOPPED
+    isPlaying.value = false
+    audioSource = null
+  }
+}
+
+function handleAudioEnded() {
+  console.log('Audio playback ended naturally')
+  audioState = AUDIO_STATES.STOPPED
+  isPlaying.value = false
+  audioSource = null
+  pausedAt = 0
+  currentTime.value = 0
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId)
+    animationFrameId = null
   }
 }
 
@@ -461,18 +494,19 @@ async function playAudio() {
     return
   }
   
-  // Prevent multiple simultaneous playback attempts
-  if (audioLoading.value || isTransitioning) {
-    console.log('Audio already loading or transitioning, ignoring play request')
+  // Guard against concurrent operations
+  if (audioState !== AUDIO_STATES.STOPPED || audioLoading.value) {
+    console.log('Audio already in progress. Current state:', audioState)
     return
   }
   
   audioLoading.value = true
+  audioState = AUDIO_STATES.LOADING
   audioError.value = null
   
   try {
     // Clean up any existing audio source first
-    await stopAudioSource()
+    await cleanupAudioSource()
     
     console.log('Starting audio playback...')
     console.log('Audio data length:', roastData.value.audio.length)
@@ -521,40 +555,15 @@ async function playAudio() {
     // Set duration
     duration.value = audioBuffer.duration
     
-    // Create and start audio source
-    console.log('Creating audio source...')
-    audioSource = audioContext.createBufferSource()
-    audioSource.buffer = audioBuffer
-    audioSource.connect(audioContext.destination)
-    
-    audioSource.onended = () => {
-      console.log('Audio playback ended')
-      isPlaying.value = false
-      audioSource = null
-      pausedAt = 0
-      currentTime.value = 0
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId)
-        animationFrameId = null
-      }
-    }
-    
-    console.log('Starting playback from:', pausedAt, 'seconds')
-    
-    // Set playing state BEFORE starting to prevent race conditions
-    isPlaying.value = true
-    
-    audioSource.start(0, pausedAt)
-    startTime = audioContext.currentTime - pausedAt
-    
-    // Start progress tracking
-    updateProgress()
+    // Start playback
+    await startAudioPlayback()
     
     console.log('Audio playing!')
     
   } catch (error) {
     console.error('Error playing audio:', error)
     audioError.value = 'Failed to play audio: ' + error.message
+    audioState = AUDIO_STATES.STOPPED
     isPlaying.value = false
   } finally {
     audioLoading.value = false
@@ -570,35 +579,37 @@ function updateProgress() {
   }
 }
 
-function pauseAudio() {
-  stopAudioSource()
-  isPlaying.value = false
-}
-
-async function stopAudioSource() {
-  // Stop and clean up the audio source without changing play state
-  if (audioSource) {
-    try {
-      audioSource.stop()
-    } catch (e) {
-      // Source might already be stopped
-    }
-    audioSource.disconnect()
-    audioSource = null
+async function pauseAudio() {
+  if (audioState !== AUDIO_STATES.PLAYING) {
+    console.log('Not currently playing, ignoring pause')
+    return
   }
   
-  if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId)
-    animationFrameId = null
-  }
-  
-  if (audioContext && isPlaying.value) {
-    // Save current position only if we're playing
+  // Save current position before stopping
+  if (audioContext) {
     pausedAt = audioContext.currentTime - startTime
   }
   
-  // Small delay to ensure cleanup is complete
-  await new Promise(resolve => setTimeout(resolve, 10))
+  await cleanupAudioSource()
+  
+  audioState = AUDIO_STATES.PAUSED
+  isPlaying.value = false
+  
+  console.log('Audio paused at:', pausedAt)
+}
+
+async function resumeAudio() {
+  if (audioState !== AUDIO_STATES.PAUSED) {
+    console.log('Not paused, cannot resume. Current state:', audioState)
+    return
+  }
+  
+  if (!audioBuffer) {
+    console.error('No audio buffer available')
+    return
+  }
+  
+  await startAudioPlayback()
 }
 
 function reset() {
@@ -610,7 +621,11 @@ function reset() {
     } catch (e) {
       // Source might already be stopped
     }
-    audioSource.disconnect()
+    try {
+      audioSource.disconnect()
+    } catch (e) {
+      // May already be disconnected
+    }
     audioSource = null
   }
   
@@ -620,7 +635,8 @@ function reset() {
     animationFrameId = null
   }
   
-  // Reset all state - this will trigger scene cleanup via watchers
+  // Reset all state
+  audioState = AUDIO_STATES.STOPPED
   isPlaying.value = false
   isTransitioning = false
   isAnalyzing.value = false
