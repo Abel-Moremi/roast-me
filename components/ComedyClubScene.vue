@@ -9,46 +9,109 @@ import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 
+// ============================================
+// PROPS & EMITS
+// ============================================
 const props = defineProps({
   capturedImage: String,
   isAnalyzing: Boolean,
   roastReady: Boolean,
-  roastData: Object
+  roastData: Object,
+  audioPlaying: Boolean,
+  audioCurrentTime: Number,
+  audioDuration: Number,
+  getAudioFrequencyData: Function
 })
 
 const emit = defineEmits(['roastFrameClicked', 'photoClicked'])
 
+// ============================================
+// DOM REFS
+// ============================================
 const containerRef = ref(null)
 const canvasRef = ref(null)
 
+// ============================================
+// THREE.JS SCENE OBJECTS
+// ============================================
 let scene, camera, renderer
-let spotlightMain, spotlightPhoto, ambientLight
-let microphone, micStand, backgroundWall
-let photoTexture, photoMaterial
-let roastFrameMesh = null
-let photoGroup = null
+let ambientLight, spotlightMain, spotlightPhoto
+
+// ============================================
+// SCENE MODELS & MESHES
+// ============================================
+let backgroundWall
+let microphone, micStand
 let comedian = null
+let photoGroup = null
+let roastFrameMesh = null
+
+// ============================================
+// ANIMATION STATE
+// ============================================
 let animationId
 let clock
+let frameCount = 0
+
+// ============================================
+// INPUT & INTERACTION
+// ============================================
 let raycaster, mouse
+
+// ============================================
+// FACIAL EXPRESSION SYSTEM
+// ============================================
+let mouthMorphTargets = {} // Map of mesh names to morph target data
+let morphStateBaseline = {} // Baseline morph states
+let morphStateCurrent = {} // Current morph states during animation
+
+const EXPRESSIONS = {
+  NEUTRAL: 'neutral',
+  SMILE: 'smile',
+  LAUGH: 'laugh',
+  SHOCKED: 'shocked',
+  ANGRY: 'angry',
+  CONFUSED: 'confused'
+}
+
+let currentExpression = EXPRESSIONS.NEUTRAL
+let targetExpression = EXPRESSIONS.NEUTRAL
+let expressionBlendFactor = 0
+const EXPRESSION_BLEND_SPEED = 0.05
+
+// ============================================
+// CONSTANTS
+// ============================================
+const STAGE_HEIGHT = 0.3
+const COMEDIAN_SCALE = 2.4
+const COMEDIAN_POSITION_Z = -1.5
+const STAGE_DEPTH = 0.5
+const STAGE_WIDTH = 8
+const STAGE_LENGTH = 6
+const BRICK_TEXTURE_SCALE = 0.3
+const FONT_SIZE = 32
+const FONT_COLOR = 'rgba(255, 200, 100, 0.7)'
+
+// ============================================
+// LIFECYCLE HOOKS
+// ============================================
 
 onMounted(() => {
   console.log('ComedyClubScene mounted')
   console.log('Canvas ref:', canvasRef.value)
   initScene()
   animate()
-  window.addEventListener('resize', onWindowResize)
-  window.addEventListener('click', onCanvasClick)
-  window.addEventListener('mousemove', onCanvasMouseMove)
+  setupEventListeners()
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', onWindowResize)
-  window.removeEventListener('click', onCanvasClick)
-  window.removeEventListener('mousemove', onCanvasMouseMove)
-  if (animationId) cancelAnimationFrame(animationId)
-  if (renderer) renderer.dispose()
+  removeEventListeners()
+  cleanup()
 })
+
+// ============================================
+// WATCHERS - PROPS
+// ============================================
 
 // Watch for captured image to project it
 watch(() => props.capturedImage, (newImage, oldImage) => {
@@ -81,6 +144,13 @@ watch(() => props.roastReady, (ready, wasReady) => {
       scene.remove(roastFrameMesh)
       roastFrameMesh = null
     }
+    
+    // Initialize facial expression system if not already done
+    if (comedian && Object.keys(mouthMorphTargets).length > 0) {
+      initializeFacialExpressionSystem()
+      setExpression(EXPRESSIONS.SMILE) // Start with a smile when roast begins
+    }
+    
     roastRevealAnimation()
     displayRoastText(props.roastData)
   } else if (wasReady && !ready) {
@@ -89,8 +159,37 @@ watch(() => props.roastReady, (ready, wasReady) => {
       scene.remove(roastFrameMesh)
       roastFrameMesh = null
     }
+    // Reset facial expressions
+    currentExpression = EXPRESSIONS.NEUTRAL
+    targetExpression = EXPRESSIONS.NEUTRAL
   }
 })
+
+// ============================================
+// EVENT LISTENERS
+// ============================================
+
+function setupEventListeners() {
+  window.addEventListener('resize', onWindowResize)
+  window.addEventListener('click', onCanvasClick)
+  window.addEventListener('mousemove', onCanvasMouseMove)
+}
+
+function removeEventListeners() {
+  window.removeEventListener('resize', onWindowResize)
+  window.removeEventListener('click', onCanvasClick)
+  window.removeEventListener('mousemove', onCanvasMouseMove)
+}
+
+function cleanup() {
+  if (animationId) cancelAnimationFrame(animationId)
+  if (renderer) renderer.dispose()
+  console.log('Scene cleanup complete')
+}
+
+// ============================================
+// INITIALIZATION
+// ============================================
 
 function initScene() {
   console.log('Initializing 3D scene...')
@@ -212,13 +311,16 @@ function initScene() {
   console.log('Scene initialization complete. Objects in scene:', scene.children.length)
 }
 
+// ============================================
+// SCENE CREATION - ENVIRONMENT
+// ============================================
+
 function addBrickTexture() {
   // Create a simple brick pattern using a canvas texture
   const canvas = document.createElement('canvas')
   canvas.width = 1024
   canvas.height = 1024
   const ctx = canvas.getContext('2d')
-  
   // Background brick color
   ctx.fillStyle = '#aa5555'
   ctx.fillRect(0, 0, 1024, 1024)
@@ -281,11 +383,7 @@ function createStage() {
   const stageGroup = new THREE.Group()
   
   // Stage platform - wooden stage
-  const stageHeight = 0.3
-  const stageWidth = 8
-  const stageDepth = 5
-  
-  const stageGeometry = new THREE.BoxGeometry(stageWidth, stageHeight, stageDepth)
+  const stageGeometry = new THREE.BoxGeometry(STAGE_WIDTH, STAGE_DEPTH, STAGE_LENGTH)
   const stageMaterial = new THREE.MeshStandardMaterial({
     color: 0x4a3422,  // Dark wood color
     roughness: 0.8,
@@ -293,7 +391,7 @@ function createStage() {
   })
   
   const stage = new THREE.Mesh(stageGeometry, stageMaterial)
-  stage.position.set(0, stageHeight / 2, -2)  // Centered, slightly raised, toward back
+  stage.position.set(0, STAGE_HEIGHT / 2, -2)  // Centered, slightly raised, toward back
   stage.castShadow = true
   stage.receiveShadow = true
   stageGroup.add(stage)
@@ -339,6 +437,10 @@ function createStage() {
   
   scene.add(stageGroup)
 }
+
+// ============================================
+// SCENE CREATION - THEATER ELEMENTS
+// ============================================
 
 function createCurtains() {
   // Rich burgundy velvet material
@@ -555,9 +657,12 @@ function createNeonSign() {
   scene.add(rightLight)
 }
 
+// ============================================
+// SCENE CREATION - CHARACTERS & PROPS
+// ============================================
+
 function loadComedianModel() {
   const loader = new GLTFLoader()
-  const stageHeight = 0.3
   
   loader.load(
     '/comedian.glb',
@@ -565,16 +670,49 @@ function loadComedianModel() {
       comedian = gltf.scene
       
       // Position on center stage
-      comedian.position.set(0, stageHeight, -1.5)
+      comedian.position.set(0, STAGE_HEIGHT, COMEDIAN_POSITION_Z)
       comedian.rotation.y = 0  // Facing audience
-      comedian.scale.set(2.4, 2.4, 2.4)  // 20% smaller
+      comedian.scale.set(COMEDIAN_SCALE, COMEDIAN_SCALE, COMEDIAN_SCALE)
       
-      // Enable shadows
+      // Enable shadows and capture morphTargets for facial expressions
       comedian.traverse((child) => {
         if (child.isMesh) {
           child.castShadow = true
           child.receiveShadow = true
+          
+          // Scan for morphTargets (used for facial expressions)
+          if (child.morphTargetInfluences && child.morphTargetInfluences.length > 0) {
+            const targetNames = []
+            
+            // Try to get morphTarget names from dictionary
+            if (child.morphTargetDictionary) {
+              Object.entries(child.morphTargetDictionary).forEach(([name, index]) => {
+                targetNames[index] = name
+              })
+            }
+            
+            // Store reference to mesh with morphTargets
+            mouthMorphTargets[child.name || `mesh_${Object.keys(mouthMorphTargets).length}`] = {
+              mesh: child,
+              influences: child.morphTargetInfluences,
+              baseInfluences: child.morphTargetInfluences.slice(),
+              targetNames: targetNames.filter(Boolean),
+              targetCount: child.morphTargetInfluences.length
+            }
+            
+            console.log(`MorphTargets on ${child.name}:`, {
+              count: child.morphTargetInfluences.length,
+              names: targetNames.filter(Boolean),
+              currentInfluences: child.morphTargetInfluences.slice(0, 5)
+            })
+          }
         }
+      })
+      
+      // Log summary
+      console.log('Facial expression morphTargets available:', Object.keys(mouthMorphTargets))
+      Object.entries(mouthMorphTargets).forEach(([meshName, data]) => {
+        console.log(`  ${meshName}: ${data.targetCount} targets (${data.targetNames.slice(0, 3).join(', ')}${data.targetCount > 3 ? '...' : ''})`)
       })
       
       // Play built-in animations if they exist
@@ -588,6 +726,7 @@ function loadComedianModel() {
       
       scene.add(comedian)
       console.log('Comedian model loaded successfully')
+      console.log('Available morphTargets:', Object.keys(mouthMorphTargets))
     },
     (progress) => {
       console.log('Loading comedian model:', (progress.loaded / progress.total * 100).toFixed(2) + '%')
@@ -668,13 +807,16 @@ function createMicrophoneStand() {
   micStand = standGroup
 }
 
+// ============================================
+// INTERACTIVE SCENE - IMAGE & ROAST DISPLAY
+// ============================================
+
 function projectImageOnWall(imageDataUrl) {
   // Create texture from captured image
   const loader = new THREE.TextureLoader()
   loader.load(imageDataUrl, (texture) => {
     photoTexture = texture
-    
-    // Calculate dimensions based on image aspect ratio
+        // Calculate dimensions based on image aspect ratio
     const img = texture.image
     const aspect = img.width / img.height
     const baseWidth = 4
@@ -817,6 +959,10 @@ function flashEffect() {
     spotlightMain.intensity = originalMain
   }, 100)
 }
+
+// ============================================
+// ANIMATIONS & EFFECTS
+// ============================================
 
 function startAnalysisAnimation() {
   // Scanning spotlight effect
@@ -974,7 +1120,177 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
   return lineCount
 }
 
-let frameCount = 0
+// Expression configurations - map which morphTargets to control for each expression
+// Each expression defines how to modify morphTarget influences
+const expressionConfigs = {
+  [EXPRESSIONS.NEUTRAL]: {
+    description: 'Neutral/normal expression',
+    morphMods: {} // Will be populated when we know available targets
+  },
+  [EXPRESSIONS.SMILE]: {
+    description: 'Smiling',
+    morphMods: {
+      // Common morph target names for mouth smile/cheek raise
+      'mouthSmile': 0.6,
+      'mouthCornerPullLeft': 0.3,
+      'mouthCornerPullRight': 0.3,
+      'cheekRaise': 0.4,
+      'cheekRaiseLeft': 0.3,
+      'cheekRaiseRight': 0.3,
+      'browRaiseOuter': 0.2
+    }
+  },
+  [EXPRESSIONS.LAUGH]: {
+    description: 'Laughing/big smile',
+    morphMods: {
+      'mouthSmile': 1.0,
+      'mouthCornerPullLeft': 0.8,
+      'mouthCornerPullRight': 0.8,
+      'mouthOpen': 0.7,
+      'cheekRaise': 0.8,
+      'cheekRaiseLeft': 0.7,
+      'cheekRaiseRight': 0.7,
+      'eyeSquintLeft': 0.6,
+      'eyeSquintRight': 0.6,
+      'browRaiseOuter': 0.5
+    }
+  },
+  [EXPRESSIONS.SHOCKED]: {
+    description: 'Shocked/surprised',
+    morphMods: {
+      'mouthOpen': 0.9,
+      'eyeWideLeft': 0.8,
+      'eyeWideRight': 0.8,
+      'browRaiseInner': 0.8,
+      'browRaiseOuter': 0.6,
+      'browRaiseLeft': 0.7,
+      'browRaiseRight': 0.7,
+      'mouthOOpen': 0.7
+    }
+  },
+  [EXPRESSIONS.ANGRY]: {
+    description: 'Angry/upset',
+    morphMods: {
+      'mouthFrown': 0.7,
+      'mouthCornerDepressLeft': 0.5,
+      'mouthCornerDepressRight': 0.5,
+      'browInnerRaise': 0.0,
+      'browDownLeft': 0.8,
+      'browDownRight': 0.8,
+      'eyeNarrowLeft': 0.6,
+      'eyeNarrowRight': 0.6,
+      'noseWrinkle': 0.4
+    }
+  },
+  [EXPRESSIONS.CONFUSED]: {
+    description: 'Confused/uncertain',
+    morphMods: {
+      'browRaiseLeft': 0.7,
+      'browDownRight': 0.7,
+      'mouthFrown': 0.3,
+      'mouthShrugLower': 0.5,
+      'eyeNarrowLeft': 0.3,
+      'eyeNarrowRight': 0.3,
+      'noseWrinkle': 0.3
+    }
+  }
+}
+
+function initializeFacialExpressionSystem() {
+  // Initialize morph states from current mesh influences
+  Object.entries(mouthMorphTargets).forEach(([meshName, meshData]) => {
+    morphStateBaseline[meshName] = meshData.baseInfluences.slice()
+    morphStateCurrent[meshName] = meshData.influences.slice()
+  })
+  console.log('Facial expression system initialized')
+}
+
+function setExpression(expressionName, immediate = false) {
+  if (!EXPRESSIONS[expressionName.toUpperCase()] && !Object.values(EXPRESSIONS).includes(expressionName)) {
+    console.warn(`Unknown expression: ${expressionName}`)
+    return
+  }
+  
+  targetExpression = expressionName
+  expressionBlendFactor = immediate ? 1 : 0
+  console.log(`Switching to expression: ${expressionName}`)
+}
+
+function updateFacialExpression(delta) {
+  // Smoothly blend toward target expression
+  if (currentExpression !== targetExpression) {
+    expressionBlendFactor = Math.min(1, expressionBlendFactor + EXPRESSION_BLEND_SPEED)
+    
+    if (expressionBlendFactor >= 1) {
+      currentExpression = targetExpression
+      expressionBlendFactor = 0
+    }
+  }
+  
+  // Apply current expression to morphTargets
+  Object.entries(mouthMorphTargets).forEach(([meshName, meshData]) => {
+    const mesh = meshData.mesh
+    const influences = mesh.morphTargetInfluences
+    
+    if (!influences) return
+    
+    // Reset to baseline
+    for (let i = 0; i < influences.length; i++) {
+      morphStateCurrent[meshName][i] = morphStateBaseline[meshName][i]
+    }
+    
+    // Apply current expression modifications
+    const currentConfig = expressionConfigs[currentExpression]
+    if (currentConfig && currentConfig.morphMods) {
+      applyExpressionMods(meshName, morphStateCurrent[meshName], currentConfig.morphMods, 1 - expressionBlendFactor)
+    }
+    
+    // Apply target expression modifications with blend
+    const targetConfig = expressionConfigs[targetExpression]
+    if (targetConfig && targetConfig.morphMods && expressionBlendFactor > 0) {
+      applyExpressionMods(meshName, morphStateCurrent[meshName], targetConfig.morphMods, expressionBlendFactor)
+    }
+    
+    // Commit changes to the mesh
+    for (let i = 0; i < influences.length; i++) {
+      influences[i] = Math.max(0, Math.min(1, morphStateCurrent[meshName][i]))
+    }
+  })
+}
+
+function applyExpressionMods(meshName, morphState, mods, blendAmount) {
+  const meshData = mouthMorphTargets[meshName]
+  if (!meshData) return
+  
+  // Try to find target indices by name
+  Object.entries(mods).forEach(([targetName, intensity]) => {
+    let targetIndex = -1
+    
+    // Try to find the morph target by name
+    if (meshData.targetNames && meshData.targetNames.length > 0) {
+      targetIndex = meshData.targetNames.findIndex(name => 
+        name.toLowerCase().includes(targetName.toLowerCase())
+      )
+    }
+    
+    // If not found by name, try the dictionary
+    if (targetIndex === -1 && meshData.mesh.morphTargetDictionary) {
+      targetIndex = meshData.mesh.morphTargetDictionary[targetName] !== undefined 
+        ? meshData.mesh.morphTargetDictionary[targetName]
+        : -1
+    }
+    
+    // Apply the modification
+    if (targetIndex >= 0 && targetIndex < morphState.length) {
+      morphState[targetIndex] = Math.min(1, morphState[targetIndex] + (intensity * blendAmount))
+    }
+  })
+}
+
+// ============================================
+// ANIMATION LOOP & UPDATES
+// ============================================
+
 function animate() {
   animationId = requestAnimationFrame(animate)
   
@@ -991,10 +1307,74 @@ function animate() {
     comedian.mixer.update(delta)
   }
   
+  // Update facial expressions
+  updateFacialExpression(delta)
+  
+  // Update lip-syncing based on audio
+  if (props.audioPlaying && props.getAudioFrequencyData) {
+    updateLipSync()
+  }
+  
   if (renderer && scene && camera) {
     renderer.render(scene, camera)
   }
 }
+
+function updateLipSync() {
+  try {
+    const audioData = props.getAudioFrequencyData()
+    if (!audioData) return
+    
+    const { midFreq, highFreq, frequencyData } = audioData
+    
+    // Use frequency data to drive mouth opening
+    // midFreq controls basic mouth opening (0-1)
+    // highFreq adds intensity for consonants
+    const mouthOpenAmount = midFreq * 0.7 + highFreq * 0.3
+    
+    // Blend expression based on audio intensity
+    // Higher frequencies = more expressive
+    const audioIntensity = highFreq
+    
+    // Dynamically adjust expression based on audio characteristics
+    // High intensity peaks could trigger laugh expression
+    if (audioIntensity > 0.6) {
+      if (currentExpression !== EXPRESSIONS.LAUGH && targetExpression !== EXPRESSIONS.LAUGH) {
+        setExpression(EXPRESSIONS.LAUGH)
+      }
+    } else if (audioIntensity > 0.3) {
+      if (currentExpression !== EXPRESSIONS.SMILE && targetExpression !== EXPRESSIONS.SMILE) {
+        setExpression(EXPRESSIONS.SMILE)
+      }
+    }
+    
+    // Apply mouth opening modulation via morphTargets
+    Object.entries(mouthMorphTargets).forEach(([meshName, meshData]) => {
+      const influences = meshData.mesh.morphTargetInfluences
+      if (!influences) return
+      
+      // Find and modulate mouth-related morph targets
+      if (meshData.targetNames && meshData.targetNames.length > 0) {
+        meshData.targetNames.forEach((targetName, index) => {
+          // Apply mouth opening to likely mouth targets
+          if (targetName.toLowerCase().includes('mouth') || 
+              targetName.toLowerCase().includes('lip') ||
+              targetName.toLowerCase().includes('jaw')) {
+            influences[index] = Math.max(0, Math.min(1, 
+              morphStateCurrent[meshName][index] * 0.8 + mouthOpenAmount * 0.2
+            ))
+          }
+        })
+      }
+    })
+  } catch (error) {
+    console.warn('Error updating lip-sync:', error)
+  }
+}
+
+// ============================================
+// EVENT HANDLERS
+// ============================================
 
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight

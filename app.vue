@@ -9,6 +9,10 @@
           :isAnalyzing="isAnalyzing"
           :roastReady="!!roastData"
           :roastData="roastData"
+          :audioPlaying="isPlaying"
+          :audioCurrentTime="currentTime"
+          :audioDuration="duration"
+          :getAudioFrequencyData="getAudioFrequencyData"
           @roastFrameClicked="showRoastModal = true"
           @photoClicked="showPhotoModal = true"
         />
@@ -189,6 +193,7 @@ const duration = ref(0)
 let audioContext = null
 let audioSource = null
 let audioBuffer = null
+let audioAnalyser = null
 let startTime = 0
 let pausedAt = 0
 let animationFrameId = null
@@ -456,6 +461,17 @@ async function startAudioPlayback() {
     audioSource.buffer = audioBuffer
     audioSource.connect(audioContext.destination)
     
+    // Create analyser for lip-syncing
+    if (!audioAnalyser) {
+      audioAnalyser = audioContext.createAnalyser()
+      audioAnalyser.fftSize = 256
+      audioAnalyser.smoothingTimeConstant = 0.8
+    }
+    
+    // Connect source to analyser
+    audioSource.connect(audioAnalyser)
+    audioAnalyser.connect(audioContext.destination)
+    
     audioSource.onended = handleAudioEnded
     
     // Mark as playing before starting to avoid race conditions
@@ -576,6 +592,40 @@ function updateProgress() {
     if (currentTime.value < duration.value) {
       animationFrameId = requestAnimationFrame(updateProgress)
     }
+  }
+}
+
+function getAudioFrequencyData() {
+  if (!audioAnalyser) return { midFreq: 0, highFreq: 0 }
+  
+  const dataArray = new Uint8Array(audioAnalyser.frequencyBinCount)
+  audioAnalyser.getByteFrequencyData(dataArray)
+  
+  // Calculate average frequency in different ranges for mouth movement
+  // Low freq (0-100Hz) = open mouth intensity
+  // Mid freq (100-500Hz) = voiced consonants
+  // High freq (500Hz+) = unvoiced consonants (s, sh, etc)
+  
+  const lowEnd = Math.floor(dataArray.length * 0.1) // First 10%
+  const midEnd = Math.floor(dataArray.length * 0.4)  // Up to 40%
+  const highEnd = dataArray.length
+  
+  let midSum = 0
+  for (let i = lowEnd; i < midEnd; i++) {
+    midSum += dataArray[i]
+  }
+  const midFreq = midSum / (midEnd - lowEnd) / 255 // Normalize to 0-1
+  
+  let highSum = 0
+  for (let i = midEnd; i < highEnd; i++) {
+    highSum += dataArray[i]
+  }
+  const highFreq = highSum / (highEnd - midEnd) / 255 // Normalize to 0-1
+  
+  return {
+    midFreq: Math.min(1, midFreq),
+    highFreq: Math.min(1, highFreq),
+    frequencyData: dataArray
   }
 }
 
