@@ -106,6 +106,12 @@ const FONT_COLOR = 'rgba(255, 200, 100, 0.7)'
 
 onMounted(() => {
   console.log('ComedyClubScene mounted')
+  console.log('Props received:', {
+    capturedImage: props.capturedImage ? 'yes' : 'no',
+    isAnalyzing: props.isAnalyzing,
+    roastReady: props.roastReady,
+    audioPlaying: props.audioPlaying
+  })
   console.log('Canvas ref:', canvasRef.value)
   initScene()
   animate()
@@ -123,9 +129,12 @@ onBeforeUnmount(() => {
 
 // Watch for captured image to project it
 watch(() => props.capturedImage, (newImage, oldImage) => {
+  console.log('capturedImage watcher triggered', { newImage: newImage ? 'has image' : 'null', oldImage: oldImage ? 'has image' : 'null' })
   if (newImage) {
+    console.log('newImage detected, calling projectImageOnWall')
     projectImageOnWall(newImage)
   } else if (oldImage && !newImage) {
+    console.log('Image cleared, removing photo from scene')
     // Reset: Remove photo from scene
     if (photoGroup) {
       scene.remove(photoGroup)
@@ -251,7 +260,7 @@ function initScene() {
   
   // Photo spotlight (initially off)
   spotlightPhoto = new THREE.SpotLight(0xffffff, 0)
-  spotlightPhoto.position.set(-8.5, 5, 0)
+  spotlightPhoto.position.set(8.5, 5, 0)
   spotlightPhoto.angle = Math.PI / 6
   spotlightPhoto.penumbra = 0.3
   spotlightPhoto.decay = 2
@@ -832,25 +841,37 @@ function createMicrophoneStand() {
 // ============================================
 
 function projectImageOnWall(imageDataUrl) {
-  // Create texture from captured image
-  const loader = new THREE.TextureLoader()
-  loader.load(imageDataUrl, (texture) => {
-    photoTexture = texture
-        // Calculate dimensions based on image aspect ratio
-    const img = texture.image
+  console.log('projectImageOnWall called with image data')
+  console.log('Image data length:', imageDataUrl ? imageDataUrl.length : 0)
+  
+  if (!imageDataUrl) {
+    console.error('No image data provided')
+    return
+  }
+  
+  // Create an image element to load the base64 data
+  const img = new Image()
+  img.onload = () => {
+    console.log('Image loaded from base64, dimensions:', img.width, 'x', img.height)
+    
     const aspect = img.width / img.height
-    const baseWidth = 4
+    console.log('Image aspect ratio:', aspect)
+    
+    // Create canvas with proper aspect ratio
     let canvasWidth, canvasHeight
+    const baseSize = 512
     
     if (aspect > 1) {
       // Landscape
-      canvasWidth = 1024
-      canvasHeight = Math.round(1024 / aspect)
+      canvasWidth = baseSize
+      canvasHeight = Math.round(baseSize / aspect)
     } else {
       // Portrait
-      canvasHeight = 1024
-      canvasWidth = Math.round(1024 * aspect)
+      canvasHeight = baseSize
+      canvasWidth = Math.round(baseSize * aspect)
     }
+    
+    console.log('Canvas dimensions:', canvasWidth, 'x', canvasHeight)
     
     // Create canvas with photo and frame border
     const canvas = document.createElement('canvas')
@@ -862,108 +883,97 @@ function projectImageOnWall(imageDataUrl) {
     ctx.fillStyle = '#1a0a0a'
     ctx.fillRect(0, 0, canvasWidth, canvasHeight)
     
-    // Gold ornate frame border
-    const borderSize = Math.min(canvasWidth, canvasHeight) * 0.03
+    // Gold ornate frame border - matching roast frame exactly
+    // Scale the bezel size based on canvas dimensions
+    const bezelOuter = 20  // Outer bezel like roast frame
+    const bezelBorder1 = 12  // First border width like roast frame
+    const bezelBorder2 = 4   // Second border width like roast frame
+    const bezelInner = 32    // Inner border position like roast frame
+    
     ctx.strokeStyle = '#d4af37'
-    ctx.lineWidth = borderSize
-    ctx.strokeRect(borderSize / 2, borderSize / 2, canvasWidth - borderSize, canvasHeight - borderSize)
+    ctx.lineWidth = bezelBorder1
+    ctx.strokeRect(bezelOuter, bezelOuter, canvasWidth - bezelOuter * 2, canvasHeight - bezelOuter * 2)
     
     ctx.strokeStyle = '#b8941e'
-    ctx.lineWidth = borderSize * 0.4
-    ctx.strokeRect(borderSize * 1.5, borderSize * 1.5, canvasWidth - borderSize * 3, canvasHeight - borderSize * 3)
+    ctx.lineWidth = bezelBorder2
+    ctx.strokeRect(bezelInner, bezelInner, canvasWidth - bezelInner * 2, canvasHeight - bezelInner * 2)
     
     // Draw the captured image in the center
-    const padding = borderSize * 2.5
+    const padding = bezelInner + bezelBorder2 * 2
     ctx.drawImage(img, padding, padding, canvasWidth - padding * 2, canvasHeight - padding * 2)
+    
+    console.log('Canvas created with image')
     
     // Create texture from canvas
     const framedTexture = new THREE.CanvasTexture(canvas)
     framedTexture.needsUpdate = true
     
-    // Create photo plane with proper aspect ratio
-    const planeWidth = baseWidth
-    const planeHeight = baseWidth / aspect
-    const photoGeometry = new THREE.PlaneGeometry(planeWidth, planeHeight)
-    photoMaterial = new THREE.MeshStandardMaterial({
+    // Create photo frame geometry with proper aspect ratio
+    const canvasAspect = canvasWidth / canvasHeight
+    const baseHeight = 3.5
+    const baseWidth = baseHeight * canvasAspect
+    
+    const frameGeometry = new THREE.PlaneGeometry(baseWidth, baseHeight)
+    const frameMaterial = new THREE.MeshStandardMaterial({
       map: framedTexture,
-      side: THREE.DoubleSide
+      side: THREE.DoubleSide,
+      emissive: 0x111111,
+      emissiveIntensity: 0.3
     })
     
-    const photoPlane = new THREE.Mesh(photoGeometry, photoMaterial)
+    const photoFrame = new THREE.Mesh(frameGeometry, frameMaterial)
+    photoFrame.receiveShadow = true
+    photoFrame.castShadow = true
+    
+    console.log('Photo frame created with dimensions:', baseWidth, 'x', baseHeight)
     
     // Add hanging strings/wires
     const stringMaterial = new THREE.MeshBasicMaterial({ color: 0x444444 })
     
-    // Left string
+    // Left string - positioned at left edge of frame
     const leftString = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.01, 0.01, 2.5, 8),
+      new THREE.CylinderGeometry(0.01, 0.01, 2.0, 8),
       stringMaterial
     )
-    leftString.position.set(-planeWidth * 0.25, planeHeight / 2 + 1.25, 0.05)
+    leftString.position.set(-baseWidth / 2 - 0.1, baseHeight / 2 + 1.0, 0.05)
     
-    // Right string
+    // Right string - positioned at right edge of frame
     const rightString = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.01, 0.01, 2.5, 8),
+      new THREE.CylinderGeometry(0.01, 0.01, 2.0, 8),
       stringMaterial
     )
-    rightString.position.set(planeWidth * 0.25, planeHeight / 2 + 1.25, 0.05)
+    rightString.position.set(baseWidth / 2 + 0.1, baseHeight / 2 + 1.0, 0.05)
     
     // Group photo and strings together
     photoGroup = new THREE.Group()
-    photoGroup.add(photoPlane)
+    photoGroup.add(photoFrame)
     photoGroup.add(leftString)
     photoGroup.add(rightString)
     photoGroup.userData.clickable = true // Mark as clickable
     
-    // Start position - in front of camera (where user is)
-    photoGroup.position.set(0, 2, 5)
-    photoGroup.scale.set(0.3, 0.3, 0.3)
+    // Position on RIGHT side of stage, similar to roast text on LEFT
+    photoGroup.position.set(8.5, 3.5, -4.5)
     scene.add(photoGroup)
     
     // Flash effect
     flashEffect()
     
-    // Animate photo flying to the wall
-    const startTime = Date.now()
-    const duration = 1200 // 1.2 seconds
-    const startPos = { x: 0, y: 2, z: 5 }
-    const endPos = { x: -8.5, y: 3.5, z: -4.5 } // Far LEFT, well in front of curtains
-    const startScale = 0.3
-    const endScale = 1.0
+    // Turn on spotlight for photo
+    spotlightPhoto.intensity = 3
+    spotlightPhoto.target.position.set(8.5, 3.5, -4.5)
+    scene.add(spotlightPhoto.target)
     
-    const flyAnimation = () => {
-      const elapsed = Date.now() - startTime
-      const progress = Math.min(elapsed / duration, 1)
-      
-      // Ease-out curve
-      const eased = 1 - Math.pow(1 - progress, 3)
-      
-      // Interpolate position
-      photoGroup.position.x = startPos.x + (endPos.x - startPos.x) * eased
-      photoGroup.position.y = startPos.y + (endPos.y - startPos.y) * eased + Math.sin(progress * Math.PI) * 0.5
-      photoGroup.position.z = startPos.z + (endPos.z - startPos.z) * eased
-      
-      // Interpolate scale
-      const scale = startScale + (endScale - startScale) * eased
-      photoGroup.scale.set(scale, scale, scale)
-      
-      // Add slight rotation during flight
-      photoGroup.rotation.y = Math.sin(progress * Math.PI * 2) * 0.2
-      
-      if (progress < 1) {
-        requestAnimationFrame(flyAnimation)
-      } else {
-        // Animation complete - photo is now on the wall
-        photoGroup.rotation.set(0, 0, 0)
-        
-        // Turn on spotlight
-        spotlightPhoto.intensity = 3
-        spotlightPhoto.target.position.set(-8.5, 3.5, -4.5)
-        scene.add(spotlightPhoto.target)
-      }
-    }
-    flyAnimation()
-  })
+    console.log('Photo frame setup complete')
+    console.log('Spotlight intensity:', spotlightPhoto.intensity)
+    console.log('Scene children count:', scene.children.length)
+  }
+  
+  img.onerror = () => {
+    console.error('Error loading image from base64')
+  }
+  
+  // Set the image source to trigger loading
+  img.src = imageDataUrl
 }
 
 function flashEffect() {
