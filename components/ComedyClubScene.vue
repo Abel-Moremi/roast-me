@@ -10,6 +10,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { useBlinking } from '@/composables/useBlinking'
 import { useJawMovement } from '@/composables/useJawMovement'
+import { useProceduralAnimations } from '@/composables/useProceduralAnimations'
 
 // ============================================
 // PROPS & EMITS
@@ -32,6 +33,16 @@ const emit = defineEmits(['roastFrameClicked', 'photoClicked'])
 // ============================================
 const { initializeBlinking, updateBlinking, eyeMorphTargets: blinkEyeMorphTargets } = useBlinking()
 const { initializeJawMovement, updateJawFromAudio, updateJawAnimation } = useJawMovement()
+const { 
+  initialize: initProceduralAnimations,
+  setAnimation: setProceduralAnimation,
+  getAnimation: getProceduralAnimation,
+  update: updateProceduralAnimations,
+  debugAnimations: debugProceduralAnimations,
+  debugBones: debugProceduralBones,
+  enableDebugMode: enableAnimDebugMode,
+  disableDebugMode: disableAnimDebugMode
+} = useProceduralAnimations()
 
 // ============================================
 // DOM REFS
@@ -116,6 +127,19 @@ onMounted(() => {
   initScene()
   animate()
   setupEventListeners()
+  
+  // Expose procedural animation controls globally for testing
+  window.setProceduralAnimation = setProceduralAnimation
+  window.getProceduralAnimation = getProceduralAnimation
+  window.debugProceduralAnimations = debugProceduralAnimations
+  window.debugProceduralBones = debugProceduralBones
+  window.enableAnimDebugMode = enableAnimDebugMode
+  window.disableAnimDebugMode = disableAnimDebugMode
+  console.log('✓ Global animation functions available:')
+  console.log('  - window.setProceduralAnimation("idle|walk|run")')
+  console.log('  - window.debugProceduralAnimations()')
+  console.log('  - window.debugProceduralBones()')
+  console.log('  - window.enableAnimDebugMode() / disableAnimDebugMode()')
 })
 
 onBeforeUnmount(() => {
@@ -741,17 +765,15 @@ function loadComedianModel() {
       })
       initializeBlinking(meshesArray)
       initializeJawMovement(meshesArray)
-      console.log('Blinking system initialized')
-      console.log('Jaw movement system initialized')
       
-      // Play built-in animations if they exist
-      if (gltf.animations && gltf.animations.length > 0) {
-        comedian.mixer = new THREE.AnimationMixer(comedian)
-        gltf.animations.forEach((clip) => {
-          const action = comedian.mixer.clipAction(clip)
-          action.play()
-        })
-      }
+      // Initialize procedural animations
+      initProceduralAnimations(comedian)
+      
+      // Start with idle animation
+      setProceduralAnimation('idle', 0.5)
+      
+      console.log('✅ Procedural animation system initialized')
+      console.log('🎬 Try in console: window.setProceduralAnimation("walk")')
       
       scene.add(comedian)
       console.log('Comedian model loaded successfully')
@@ -1264,6 +1286,14 @@ function updateFacialExpression(delta) {
     
     if (!influences) return
     
+    // Ensure morph state arrays are initialized
+    if (!morphStateCurrent[meshName]) {
+      morphStateCurrent[meshName] = influences.slice()
+    }
+    if (!morphStateBaseline[meshName]) {
+      morphStateBaseline[meshName] = influences.slice()
+    }
+    
     // Reset to baseline
     for (let i = 0; i < influences.length; i++) {
       morphStateCurrent[meshName][i] = morphStateBaseline[meshName][i]
@@ -1332,9 +1362,9 @@ function animate() {
     frameCount++
   }
   
-  // Update built-in model animations only
-  if (comedian && comedian.mixer) {
-    comedian.mixer.update(delta)
+  // Update procedural animations - PRIMARY SYSTEM
+  if (comedian) {
+    updateProceduralAnimations(delta)
   }
   
   // Update facial expressions
@@ -1409,6 +1439,11 @@ function updateLipSync() {
       const influences = meshData.mesh.morphTargetInfluences
       if (!influences) return
       
+      // Ensure morph state is initialized
+      if (!morphStateCurrent[meshName]) {
+        morphStateCurrent[meshName] = influences.slice()
+      }
+      
       // Find and modulate mouth-related morph targets
       if (meshData.targetNames && meshData.targetNames.length > 0) {
         meshData.targetNames.forEach((targetName, index) => {
@@ -1417,7 +1452,7 @@ function updateLipSync() {
               targetName.toLowerCase().includes('lip') ||
               targetName.toLowerCase().includes('jaw')) {
             influences[index] = Math.max(0, Math.min(1, 
-              morphStateCurrent[meshName][index] * 0.8 + mouthOpenAmount * 0.2
+              (morphStateCurrent[meshName][index] || 0) * 0.8 + mouthOpenAmount * 0.2
             ))
           }
         })
