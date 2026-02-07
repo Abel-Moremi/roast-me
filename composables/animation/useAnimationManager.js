@@ -464,8 +464,9 @@ export function useAnimationManager() {
 
       if (animationCount.value > 0) {
         console.log('  📹 Animation clips:')
-        Object.keys(animations.value).forEach(name => {
-          console.log(`    - "${name}"`)
+        Object.entries(animations.value).forEach(([name, data]) => {
+          const duration = data.clip ? data.clip.duration.toFixed(2) : '?'
+          console.log(`    - "${name}" (${duration}s)`)
         })
       }
     } else {

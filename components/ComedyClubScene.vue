@@ -37,6 +37,7 @@ const {
   initialize: initAnimationManager,
   setState: setAnimationState,
   holdState: holdAnimationState,
+  unlockState: unlockAnimationState,
   update: updateAnimations,
   debugState: debugAnimState,
   debugBones: debugAnimBones,
@@ -130,12 +131,16 @@ onMounted(() => {
   
   // Expose animation controls globally for testing
   window.setAnimationState = setAnimationState
+  window.holdAnimationState = holdAnimationState
+  window.unlockAnimationState = unlockAnimationState
   window.debugAnimState = debugAnimState
   window.debugAnimBones = debugAnimBones
   window.debugAnimModel = debugAnimModel
   window.debugAnimAvailableStates = debugAnimAvailableStates
   console.log('✓ Global animation functions available:')
   console.log('  - window.setAnimationState(state)')
+  console.log('  - window.holdAnimationState(state)  // Lock to state')
+  console.log('  - window.unlockAnimationState()     // Allow transitions')
   console.log('  - window.debugAnimState()')
   console.log('  - window.debugAnimBones()')
   console.log('  - window.debugAnimModel()')
