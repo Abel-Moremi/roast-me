@@ -12,6 +12,7 @@ from config import GEMINI_API_KEY, CORS_HEADERS
 from utils.image_utils import parse_image_from_request, resize_image, image_to_bytes
 from services.roast_service import generate_roast, build_narration_text
 from services.tts_service import generate_tts_audio, get_audio_mime_type
+from services.animation_service import generate_animation_script
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -70,6 +71,21 @@ def roast_image(request):
         # Generate TTS audio
         audio_base64 = generate_tts_audio(client, narration_text)
 
+        # Estimate audio duration (rough estimate: ~150 words per minute = 0.4 seconds per word)
+        word_count = len(narration_text.split())
+        estimated_duration = max(3, word_count * 0.4)  # Minimum 3 seconds
+
+        # Generate animation script based on narration and estimated duration
+        try:
+            animation_script = generate_animation_script(
+                client, 
+                narration_text, 
+                estimated_duration
+            )
+        except Exception as anim_error:
+            logger.warning(f"Animation script generation failed, continuing without: {anim_error}")
+            animation_script = None
+
         # Build response
         response_data = {
             "success": True,
@@ -79,6 +95,9 @@ def roast_image(request):
         if audio_base64:
             response_data["audio"] = audio_base64
             response_data["audioMimeType"] = get_audio_mime_type()
+
+        if animation_script:
+            response_data["animationScript"] = animation_script
 
         return jsonify(response_data), 200, CORS_HEADERS
 
