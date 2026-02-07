@@ -10,7 +10,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { useBlinking } from '@/composables/useBlinking'
 import { useJawMovement } from '@/composables/useJawMovement'
-import { useProceduralAnimations } from '@/composables/useProceduralAnimations'
+import { useAnimationManager } from '@/composables/animation/useAnimationManager'
 
 // ============================================
 // PROPS & EMITS
@@ -34,15 +34,15 @@ const emit = defineEmits(['roastFrameClicked', 'photoClicked'])
 const { initializeBlinking, updateBlinking, eyeMorphTargets: blinkEyeMorphTargets } = useBlinking()
 const { initializeJawMovement, updateJawFromAudio, updateJawAnimation } = useJawMovement()
 const { 
-  initialize: initProceduralAnimations,
-  setAnimation: setProceduralAnimation,
-  getAnimation: getProceduralAnimation,
-  update: updateProceduralAnimations,
-  debugAnimations: debugProceduralAnimations,
-  debugBones: debugProceduralBones,
-  enableDebugMode: enableAnimDebugMode,
-  disableDebugMode: disableAnimDebugMode
-} = useProceduralAnimations()
+  initialize: initAnimationManager,
+  setState: setAnimationState,
+  holdState: holdAnimationState,
+  update: updateAnimations,
+  debugState: debugAnimState,
+  debugBones: debugAnimBones,
+  debugModel: debugAnimModel,
+  debugAvailableStates: debugAnimAvailableStates
+} = useAnimationManager()
 
 // ============================================
 // DOM REFS
@@ -128,18 +128,18 @@ onMounted(() => {
   animate()
   setupEventListeners()
   
-  // Expose procedural animation controls globally for testing
-  window.setProceduralAnimation = setProceduralAnimation
-  window.getProceduralAnimation = getProceduralAnimation
-  window.debugProceduralAnimations = debugProceduralAnimations
-  window.debugProceduralBones = debugProceduralBones
-  window.enableAnimDebugMode = enableAnimDebugMode
-  window.disableAnimDebugMode = disableAnimDebugMode
+  // Expose animation controls globally for testing
+  window.setAnimationState = setAnimationState
+  window.debugAnimState = debugAnimState
+  window.debugAnimBones = debugAnimBones
+  window.debugAnimModel = debugAnimModel
+  window.debugAnimAvailableStates = debugAnimAvailableStates
   console.log('✓ Global animation functions available:')
-  console.log('  - window.setProceduralAnimation("idle|walk|run")')
-  console.log('  - window.debugProceduralAnimations()')
-  console.log('  - window.debugProceduralBones()')
-  console.log('  - window.enableAnimDebugMode() / disableAnimDebugMode()')
+  console.log('  - window.setAnimationState(state)')
+  console.log('  - window.debugAnimState()')
+  console.log('  - window.debugAnimBones()')
+  console.log('  - window.debugAnimModel()')
+  console.log('  - window.debugAnimAvailableStates()')
 })
 
 onBeforeUnmount(() => {
@@ -766,14 +766,26 @@ function loadComedianModel() {
       initializeBlinking(meshesArray)
       initializeJawMovement(meshesArray)
       
-      // Initialize procedural animations
-      initProceduralAnimations(comedian)
+      // Initialize animation manager with baked animations
+      console.log('🎬 GLTF Animation Load Info:')
+      console.log(`  gltf.scene: ${gltf.scene ? 'yes' : 'no'}`)
+      console.log(`  gltf.scene.animations: ${gltf.scene?.animations ? gltf.scene.animations.length : 0}`)
+      console.log(`  gltf.animations: ${gltf.animations ? gltf.animations.length : 0}`)
       
-      // Start with idle animation
-      setProceduralAnimation('idle', 0.5)
+      initAnimationManager(gltf)
       
-      console.log('✅ Procedural animation system initialized')
-      console.log('🎬 Try in console: window.setProceduralAnimation("walk")')
+      // Force relax animation to play and lock to this state
+      console.log('🎭 Setting comedian to relax state...')
+      setAnimationState('relax', 0.0)
+      holdAnimationState('relax')
+      
+      // Debug info
+      debugAnimState()
+      debugAnimBones()
+      debugAnimAvailableStates()
+      
+      console.log('✅ Animation manager initialized')
+      console.log('🎬 Try in console: window.setAnimationState("walk")')
       
       scene.add(comedian)
       console.log('Comedian model loaded successfully')
@@ -1362,9 +1374,13 @@ function animate() {
     frameCount++
   }
   
-  // Update procedural animations - PRIMARY SYSTEM
-  if (comedian) {
-    updateProceduralAnimations(delta)
+  // Update animations - PRIMARY SYSTEM
+  if (comedian && props.audioPlaying && props.getAudioFrequencyData) {
+    const audioData = props.getAudioFrequencyData()
+    const audioIntensity = audioData ? Math.max(audioData.midFreq, audioData.highFreq) : 0
+    updateAnimations(delta, audioIntensity)
+  } else if (comedian) {
+    updateAnimations(delta, 0)
   }
   
   // Update facial expressions

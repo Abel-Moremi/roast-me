@@ -36,10 +36,16 @@ export function useAnimationManager() {
   // ANIMATION STATE DEFINITION
   // ============================================
   const ANIMATION_STATES = {
-    idle: { name: 'Idle', weight: 1.0 },
-    walk: { name: 'Walk', weight: 0.5 },
-    run: { name: 'Run', weight: 0.7 },
-    custom: { name: 'Custom', weight: 0.0 }
+    idle: { clipName: 'idle', weight: 1.0 },
+    walkRelaxed: { clipName: 'walk-relaxed-loop', weight: 0.8 },
+    walk: { clipName: 'walk-relaxed-loop', weight: 0.8 },
+    walkThink: { clipName: 'walk-think', weight: 0.7 },
+    run: { clipName: 'aerobic-dance', weight: 0.9 },
+    relax: { clipName: 'relax', weight: 1.0 },
+    sitTalk: { clipName: 'sit-talk', weight: 1.0 },
+    spellcast: { clipName: 'spellcast', weight: 0.8 },
+    action: { clipName: 'Action', weight: 0.9 },
+    default: { clipName: 'Default', weight: 1.0 }
   }
 
   // ============================================
@@ -78,8 +84,8 @@ export function useAnimationManager() {
   const boneBaseRotations = ref({})
   const animations = ref({})
 
-  const currentState = ref('idle')
-  const targetState = ref('idle')
+  const currentState = ref('relax')
+  const targetState = ref('relax')
   const transitionSpeed = ref(0.3)  // Seconds
   const isTransitioning = ref(false)
 
@@ -95,43 +101,52 @@ export function useAnimationManager() {
   // ============================================
   /**
    * Initialize animation manager
-   * @param {THREE.Object3D} modelRef - The loaded model
+   * Can accept either a model (scene) or a GLTF result object
    */
-  function initialize(modelRef) {
-    if (!modelRef) {
+  function initialize(input) {
+    if (!input) {
       console.error('❌ No model provided to animation manager')
       return
     }
 
-    model.value = modelRef
+    let modelRef = input
+    let animationClips = null
+    
     console.log('🎬 Initializing ActorCore Animation Manager...')
+    
+    // Check if input has animations array (GLTF result)
+    if (input.animations && Array.isArray(input.animations) && input.animations.length > 0) {
+      animationClips = input.animations
+      // Use scene for mixer if available, otherwise input
+      if (input.scene) {
+        modelRef = input.scene
+        console.log('📹 Detected GLTF result object with gltf.scene')
+      }
+      console.log(`📹 Found ${animationClips.length} animation clip(s)`)
+    }
+    // Check if it's a scene/model with animations
+    else if (input.type === 'Scene' || input.type === 'Group') {
+      modelRef = input
+      if (input.animations && input.animations.length > 0) {
+        animationClips = input.animations
+        console.log(`📹 Found ${animationClips.length} animation clip(s) on scene`)
+      }
+    }
+    
+    if (!modelRef || !animationClips || animationClips.length === 0) {
+      console.warn('⚠️ No animations found or invalid input')
+      return
+    }
+
+    model.value = modelRef
     console.log(`   Model object: ${modelRef.name || 'unnamed'}`)
-    console.log(`   Model has animations property: ${modelRef.animations ? 'yes' : 'no'}`)
-    console.log(`   Animation count: ${modelRef.animations ? modelRef.animations.length : 0}`)
 
     // Create mixer
     mixer.value = new THREE.AnimationMixer(modelRef)
     console.log('✓ Animation mixer created')
 
     // Try to find animations
-    let animationClips = null
-    
-    // First check the model itself
-    if (modelRef.animations && modelRef.animations.length > 0) {
-      animationClips = modelRef.animations
-      console.log(`📹 Found ${animationClips.length} animation clip(s) on model`)
-    } else {
-      // Check if it's a GLTF result object
-      if (modelRef.animations) {
-        animationClips = modelRef.animations
-        console.log(`📹 Found ${animationClips.length} animation clip(s) on GLTF object`)
-      } else {
-        console.warn('⚠️ No animations found!')
-        console.log('   This model has no animation clips loaded.')
-        return
-      }
-    }
-
+    let processedClips = 0
     // Cache all animations
     if (animationClips && animationClips.length > 0) {
       console.log(`📹 Processing ${animationClips.length} animation clip(s):`)
@@ -144,7 +159,7 @@ export function useAnimationManager() {
         }
         console.log(`      ✓ Stored in animations.value`)
       })
-      console.log(`Total stored: ${Object.keys(animations.value).length}`)
+      console.log(`✅ Total animations loaded: ${Object.keys(animations.value).length}`)
     }
 
     // Cache bones using bone map
@@ -192,7 +207,10 @@ export function useAnimationManager() {
       return
     }
 
-    if (currentState.value === newState && !isTransitioning.value) {
+    // For initialization (when both current and target are same), force it
+    const forcePlay = currentState.value === newState && targetState.value === newState && !isTransitioning.value && speed === 0
+
+    if (currentState.value === newState && !isTransitioning.value && !forcePlay) {
       return  // Already in this state
     }
 
@@ -202,15 +220,15 @@ export function useAnimationManager() {
     transitionSpeed.value = speed
     isTransitioning.value = true
 
-    const stateName = ANIMATION_STATES[newState].name
-    console.log(`  Looking for animation: "${stateName}"`)
+    const clipName = ANIMATION_STATES[newState].clipName
+    console.log(`  Looking for animation: "${clipName}"`)
     console.log(`  Available animations: ${Object.keys(animations.value).join(', ')}`)
 
-    if (animations.value[stateName]) {
-      console.log(`  ✓ Found animation: ${stateName}`)
-      playAnimationClip(stateName, speed)
+    if (animations.value[clipName]) {
+      console.log(`  ✓ Found animation: ${clipName}`)
+      playAnimationClip(clipName, speed)
     } else {
-      console.warn(`  ✗ Animation not found: ${stateName}`)
+      console.warn(`  ✗ Animation not found: ${clipName}`)
       
       // Try to find any animation that contains this word
       const fuzzyMatch = Object.keys(animations.value).find(name =>
@@ -250,6 +268,16 @@ export function useAnimationManager() {
     animData.action.reset()
     animData.action.play()
     console.log(`  ✓ Playing: ${clipName}`)
+  }
+
+  /**
+   * Hold a state and prevent transitions
+   */
+  function holdState(stateToHold) {
+    targetState.value = stateToHold
+    currentState.value = stateToHold
+    isTransitioning.value = false
+    console.log(`🔒 Holding state: ${stateToHold}`)
   }
 
   /**
@@ -422,6 +450,19 @@ export function useAnimationManager() {
   }
 
   /**
+   * Print all available animation states
+   */
+  function debugAvailableStates() {
+    console.log('📋 Available Animation States:')
+    console.log('=' .repeat(50))
+    Object.entries(ANIMATION_STATES).forEach(([stateKey, stateConfig]) => {
+      console.log(`  window.setAnimationState('${stateKey}')`)
+      console.log(`    └─ Plays: "${stateConfig.clipName}"`)
+    })
+    console.log('=' .repeat(50))
+  }
+
+  /**
    * Check what's loaded in the model
    */
   function debugModel() {
@@ -470,12 +511,14 @@ export function useAnimationManager() {
     disable,
     setBoneRotation,
     lookAt,
+    holdState,
     applyProceduralOverrides,
 
     // Debug
     debugState,
     debugBones,
     debugModel,
+    debugAvailableStates,
 
     // Config (exported for customization)
     BONE_MAP,
