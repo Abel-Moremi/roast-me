@@ -29,7 +29,7 @@ const props = defineProps({
   syncIntensity: Number
 })
 
-const emit = defineEmits(['roastFrameClicked', 'photoClicked'])
+const emit = defineEmits(['roastFrameClicked', 'photoClicked', 'sceneReady'])
 
 // ============================================
 // COMPOSABLES
@@ -823,6 +823,9 @@ function loadComedianModel() {
       scene.add(comedian)
       console.log('Comedian model loaded successfully')
       console.log('Available morphTargets:', Object.keys(mouthMorphTargets))
+      
+      // Emit scene ready event for loading screen
+      emit('sceneReady')
     },
     (progress) => {
       console.log('Loading comedian model:', (progress.loaded / progress.total * 100).toFixed(2) + '%')

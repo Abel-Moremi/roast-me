@@ -2,6 +2,18 @@
   <div class="w-screen h-screen relative overflow-hidden">
     <NuxtRouteAnnouncer />
     <ClientOnly>
+      <!-- Loading Screen (displayed until scene and character fully loaded) -->
+      <LoadingScreen
+        :isLoading="isSceneLoading"
+        :sceneLoaded="sceneLoaded"
+        :characterLoaded="characterLoaded"
+        :animationsLoaded="animationsLoaded"
+        :sceneProgress="sceneProgress"
+        :characterProgress="characterProgress"
+        :animationProgress="animationProgress"
+        @loadingComplete="handleLoadingComplete"
+      />
+
       <!-- Comedy Club 3D Scene (always visible as background) -->
       <div class="absolute inset-0 z-0">
         <ComedyClubScene 
@@ -16,6 +28,7 @@
           :syncAnimation="syncAnimation"
           :syncExpression="syncExpression"
           :syncIntensity="syncIntensity"
+          @sceneReady="handleSceneReady"
           @roastFrameClicked="showRoastModal = true"
           @photoClicked="showPhotoModal = true"
         />
@@ -184,6 +197,25 @@
 import { ref, watch } from 'vue'
 import { useAnimationAudioSync } from '@/composables/useAnimationAudioSync'
 import { useMockRoast } from '@/composables/useMockRoast'
+import { useLoadingState } from '@/composables/useLoadingState'
+
+// Initialize loading state manager
+const {
+  isLoading: isSceneLoading,
+  sceneLoaded,
+  characterLoaded,
+  animationsLoaded,
+  sceneProgress,
+  characterProgress,
+  animationProgress,
+  startSceneLoading,
+  completeSceneLoading,
+  startCharacterLoading,
+  completeCharacterLoading,
+  startAnimationSetup,
+  completeAnimationSetup,
+  completeLoading
+} = useLoadingState()
 
 const capturedImage = ref(null)
 const roastData = ref(null)
@@ -237,6 +269,35 @@ watch(() => syncExpression.value, (newVal, oldVal) => {
     console.log(`📊 [app.vue] syncExpression updated: "${oldVal}" → "${newVal}"`)
   }
 })
+
+// ============================================
+// LOADING HANDLERS
+// ============================================
+/**
+ * Called when ComedyClubScene is ready (scene initialized, character loaded)
+ */
+function handleSceneReady() {
+  console.log('🎉 Scene ready - all components initialized')
+  completeSceneLoading()
+  startCharacterLoading()
+  // Simulate character and animation loading as they happen in parallel
+  setTimeout(() => {
+    completeCharacterLoading()
+    startAnimationSetup()
+  }, 500)
+  setTimeout(() => {
+    completeAnimationSetup()
+    completeLoading()
+  }, 1000)
+}
+
+/**
+ * Called when loading screen animation completes
+ */
+function handleLoadingComplete() {
+  console.log('✅ Loading screen animation complete, scene fully visible')
+  // Scene is now fully visible and interactive
+}
 
 function handleImageCaptured(base64Image) {
   capturedImage.value = base64Image
