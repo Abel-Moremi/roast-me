@@ -174,19 +174,60 @@ async function sendToAPI(base64Image) {
       console.error('Failed to load mock data from file')
       // Fallback mock response if file loading fails
       const fallbackResponse = {
-        success: true,
-        data: {
-          confidence_rating: 10,
-          one_liner: "You look like a Muppet that's been through a dryer on the 'high heat' setting for three days straight.",
-          overall_vibe: "A chaotic, high-energy ball of red yarn having an existential crisis in a blank void.",
-          roast_lines: [
-            "Look at that mouth... it's not even a smile, it's just a structural failure... a total black hole right in the middle of your face.",
-            "Your eyes are doing that thing where one's looking at me... and the other's looking for a better career path.",
-          ],
-          style_tags: ["chaotic", "fuzzy", "existential", "loud"]
+        animationScript: {
+          metadata: {
+            duration: 109.6,
+            fallback: true,
+            intensity: "medium",
+            notes: "Generated using fallback pattern (state machine compliant)",
+            style: "comedic",
+            transcript: "You look like a Muppet that's been through a dryer on the 'high heat' setting for three days straight."
+          },
+          timeline: [
+            {
+              animation: "idle",
+              endTime: 21.92,
+              expression: "neutral",
+              intensity: 0.4,
+              notes: "Opening - neutral stance, setting up for performance",
+              startTime: 0
+            },
+            {
+              animation: "walk-think",
+              endTime: 49.32,
+              expression: "smile",
+              intensity: 0.6,
+              notes: "Building - contemplative movement, engaging audience",
+              startTime: 21.92
+            },
+            {
+              animation: "spellcast",
+              endTime: 76.72,
+              expression: "laugh",
+              intensity: 0.9,
+              notes: "Climax - high energy gesture with dramatic emphasis",
+              startTime: 49.32
+            },
+            {
+              animation: "aerobic-dance",
+              endTime: 93.16,
+              expression: "laugh",
+              intensity: 0.8,
+              notes: "Peak energy - celebrating the comedic moment",
+              startTime: 76.72
+            },
+            {
+              animation: "relax",
+              endTime: 109.6,
+              expression: "smile",
+              intensity: 0.5,
+              notes: "Closing - settling down with satisfied expression",
+              startTime: 93.16
+            }
+          ]
         },
-        audioMimeType: "audio/L16;codec=pcm;rate=24000",
-        audio: null
+        audio: null,
+        audioMimeType: "audio/L16;codec=pcm;rate=24000"
       }
       emit('roastReceived', fallbackResponse)
     }

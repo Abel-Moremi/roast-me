@@ -1093,28 +1093,42 @@ function displayRoastText(roastData) {
   ctx.textAlign = 'center'
   ctx.fillText('THE ROAST', 256, 80)
   
-  // Overall vibe
+  // Extract metadata and timeline from new structure
+  const metadata = roastData.animationScript?.metadata || {}
+  const timeline = roastData.animationScript?.timeline || []
+  
+  // Transcript/Vibe from metadata
   ctx.fillStyle = '#ffaa88'
   ctx.font = 'italic 20px serif'
-  const vibeText = `"${roastData.data.overall_vibe}"`
+  const vibeText = `"${metadata.transcript || 'Animation roast performance'}"`
   wrapText(ctx, vibeText, 256, 130, 420, 26)
   
-  // Roast lines
+  // Animation timeline summary
   ctx.fillStyle = '#cccccc'
   ctx.font = '16px monospace'
   ctx.textAlign = 'left'
   let y = 220
-  roastData.data.roast_lines.slice(0, 8).forEach((line, i) => {
-    const wrapped = wrapText(ctx, `• ${line}`, 60, y, 390, 20)
+  if (timeline && timeline.length > 0) {
+    timeline.slice(0, 8).forEach((frame, i) => {
+      const intensity = frame.intensity !== undefined ? frame.intensity.toFixed(1) : 'N/A'
+      const line = `• ${frame.animation || 'animation'} (${frame.expression || 'expr'}) - ${intensity}`
+      const wrapped = wrapText(ctx, line, 60, y, 390, 20)
+      y += wrapped * 20 + 10
+    })
+  } else {
+    const line = '• No animation timeline available'
+    const wrapped = wrapText(ctx, line, 60, y, 390, 20)
     y += wrapped * 20 + 10
-  })
+  }
   
-  // One-liner at bottom
+  // Duration and style at bottom
   ctx.fillStyle = '#ff6666'
   ctx.font = 'bold italic 22px serif'
   ctx.textAlign = 'center'
-  const oneLiner = `"${roastData.data.one_liner}"`
-  wrapText(ctx, oneLiner, 256, y + 40, 420, 28)
+  const style = metadata.style || 'comedic'
+  const duration = metadata.duration !== undefined ? metadata.duration.toFixed(2) : '0.00'
+  const metadataText = `"${style} - ${duration}s"`
+  wrapText(ctx, metadataText, 256, y + 40, 420, 28)
   
   // Create texture from canvas
   const texture = new THREE.CanvasTexture(canvas)

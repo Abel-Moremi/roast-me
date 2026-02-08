@@ -535,7 +535,11 @@ async function playAudio() {
     
     // Decode base64 to ArrayBuffer if not already done
     if (!audioBuffer) {
-      const base64Audio = roastData.value.audio
+      // Support both old and new structure
+      const base64Audio = roastData.value.audio || roastData.value.animationScript?.audio
+      if (!base64Audio) {
+        throw new Error('No audio data found in roast response')
+      }
       console.log('Decoding base64 audio...')
       
       const binaryString = atob(base64Audio)
