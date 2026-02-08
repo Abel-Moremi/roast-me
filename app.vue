@@ -13,6 +13,9 @@
           :audioCurrentTime="currentTime"
           :audioDuration="duration"
           :getAudioFrequencyData="getAudioFrequencyData"
+          :syncAnimation="syncAnimation"
+          :syncExpression="syncExpression"
+          :syncIntensity="syncIntensity"
           @roastFrameClicked="showRoastModal = true"
           @photoClicked="showPhotoModal = true"
         />
@@ -178,7 +181,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import { useAnimationAudioSync } from '@/composables/useAnimationAudioSync'
+import { useMockRoast } from '@/composables/useMockRoast'
 
 const capturedImage = ref(null)
 const roastData = ref(null)
@@ -190,6 +195,18 @@ const showRoastModal = ref(false)
 const showPhotoModal = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
+
+// Initialize sync controller
+const { 
+  initialize: initSync,
+  update: updateSync,
+  setPlaying: setSyncPlaying,
+  seek: syncSeek,
+  currentAnimation: syncAnimation,
+  currentExpression: syncExpression,
+  currentIntensity: syncIntensity
+} = useAnimationAudioSync()
+
 let audioContext = null
 let audioSource = null
 let audioBuffer = null
@@ -208,14 +225,55 @@ const AUDIO_STATES = {
 }
 let audioState = AUDIO_STATES.STOPPED
 
+// Debug watchers to see if sync values are updating
+watch(() => syncAnimation.value, (newVal, oldVal) => {
+  if (newVal !== oldVal) {
+    console.log(`📊 [app.vue] syncAnimation updated: "${oldVal}" → "${newVal}"`)
+  }
+})
+
+watch(() => syncExpression.value, (newVal, oldVal) => {
+  if (newVal !== oldVal) {
+    console.log(`📊 [app.vue] syncExpression updated: "${oldVal}" → "${newVal}"`)
+  }
+})
+
 function handleImageCaptured(base64Image) {
   capturedImage.value = base64Image
   isAnalyzing.value = true
 }
 
 function handleRoastReceived(data) {
+  console.log('🎬 handleRoastReceived called')
+  console.log('🎬 data type:', typeof data)
+  console.log('🎬 data is null?', data === null)
+  console.log('🎬 data is undefined?', data === undefined)
+  
+  if (data) {
+    console.log('🎬 data keys:', Object.keys(data).sort())
+    console.log('🎬 data.animationScript type:', typeof data.animationScript)
+    console.log('🎬 data.animationScript is null?', data.animationScript === null)
+    console.log('🎬 data.animationScript is undefined?', data.animationScript === undefined)
+    
+    // Check each property
+    console.log('🎬 Properties check:')
+    console.log('  - has animationScript?', 'animationScript' in data)
+    console.log('  - has audio?', 'audio' in data)
+    console.log('  - has audioMimeType?', 'audioMimeType' in data)
+    console.log('  - has data?', 'data' in data)
+    console.log('  - has success?', 'success' in data)
+    
+    if (data.animationScript) {
+      console.log('🎬 animationScript.timeline exists?', !!data.animationScript.timeline)
+      if (data.animationScript.timeline) {
+        console.log('🎬 Timeline frames count:', data.animationScript.timeline.length)
+      }
+    }
+  }
+  
   // 1.5 second delay for comedic timing
   setTimeout(() => {
+    console.log('🎬 Inside setTimeout - initializing sync')
     roastData.value = data
     isAnalyzing.value = false
     audioError.value = null
@@ -224,6 +282,32 @@ function handleRoastReceived(data) {
     pausedAt = 0
     currentTime.value = 0
     duration.value = 0
+    
+    // Initialize animation-audio sync controller with animation script
+    if (data?.animationScript) {
+      console.log('🎬 animationScript found, preparing to initialize sync')
+      const audioData = data.audio || data.animationScript?.audio
+      if (audioData) {
+        // Decode to get actual duration
+        const binaryString = atob(audioData)
+        const bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+        const sampleRate = 24000
+        const numSamples = bytes.length / 2
+        const audioDuration = numSamples / sampleRate
+        
+        console.log('🎬 Initializing sync controller with duration:', audioDuration)
+        console.log('🎬 About to call initSync with script:', data.animationScript)
+        initSync(data.animationScript, audioDuration)
+        console.log('🎬 initSync called successfully')
+      } else {
+        console.log('🎬 No audio data found')
+      }
+    } else {
+      console.log('🎬 No animationScript in data')
+    }
   }, 1500)
 }
 
@@ -502,6 +586,11 @@ function handleAudioEnded() {
     cancelAnimationFrame(animationFrameId)
     animationFrameId = null
   }
+  
+  // Return character to idle state when audio ends
+  console.log('🎬 Transitioning character to idle state')
+  syncAnimation.value = 'idle'
+  setSyncPlaying(false)
 }
 
 async function playAudio() {
@@ -593,6 +682,16 @@ async function playAudio() {
 function updateProgress() {
   if (isPlaying.value && audioContext) {
     currentTime.value = audioContext.currentTime - startTime
+    
+    // Update animation sync controller
+    const syncState = updateSync(currentTime.value)
+    if (syncState) {
+      // Emit animation state update to ComedyClubScene
+      console.log(`✅ [updateProgress] Sync state returned: animation="${syncState.animation}", expression="${syncState.expression}"`)
+    } else {
+      console.log(`❌ [updateProgress] No sync state at ${currentTime.value.toFixed(2)}s`)
+    }
+    
     if (currentTime.value < duration.value) {
       animationFrameId = requestAnimationFrame(updateProgress)
     }

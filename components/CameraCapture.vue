@@ -169,7 +169,24 @@ async function sendToAPI(base64Image) {
       console.log('Mock data loaded successfully')
       console.log('Audio field exists:', !!mockResponse.audio)
       console.log('Audio length:', mockResponse.audio?.length || 0)
+      console.log('🎥 CameraCapture - About to emit mockResponse')
+      console.log('🎥 mockResponse type:', typeof mockResponse)
+      console.log('🎥 mockResponse keys:', mockResponse ? Object.keys(mockResponse) : 'null')
+      console.log('🎥 mockResponse.animationScript exists?', !!mockResponse?.animationScript)
+      if (mockResponse?.animationScript) {
+        console.log('🎥   - animationScript.timeline length:', mockResponse.animationScript.timeline?.length)
+      }
+      console.log('🎥 mockResponse structure:', {
+        hasAnimationScript: !!mockResponse?.animationScript,
+        hasAudio: !!mockResponse?.audio,
+        hasAudioMimeType: !!mockResponse?.audioMimeType,
+        hasData: !!mockResponse?.data,
+        hasSuccess: mockResponse?.success !== undefined
+      })
+      console.log('🎥 About to emit event with mockResponse')
       emit('roastReceived', mockResponse)
+      console.log('🎥 roastReceived event emitted')
+      console.log('🎥 Object.keys(mockResponse) after emit:', Object.keys(mockResponse))
     } else {
       console.error('Failed to load mock data from file')
       // Fallback mock response if file loading fails

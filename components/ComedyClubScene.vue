@@ -23,7 +23,10 @@ const props = defineProps({
   audioPlaying: Boolean,
   audioCurrentTime: Number,
   audioDuration: Number,
-  getAudioFrequencyData: Function
+  getAudioFrequencyData: Function,
+  syncAnimation: String,
+  syncExpression: String,
+  syncIntensity: Number
 })
 
 const emit = defineEmits(['roastFrameClicked', 'photoClicked'])
@@ -179,6 +182,31 @@ watch(() => props.capturedImage, (newImage, oldImage) => {
 watch(() => props.isAnalyzing, (analyzing) => {
   if (analyzing && spotlightPhoto) {
     startAnalysisAnimation()
+  }
+})
+
+// Watch for animation sync updates from audio controller
+watch(() => props.syncAnimation, (newAnimation, oldAnimation) => {
+  console.log(`🔍 [Watcher] syncAnimation changed: "${oldAnimation}" → "${newAnimation}"`)
+  if (newAnimation && comedian) {
+    console.log(`📺 Setting animation to: ${newAnimation}`)
+    // Unlock state if it's locked to allow transitions
+    unlockAnimationState()
+    console.log(`🔓 State unlocked, calling setAnimationState("${newAnimation}")`)
+    setAnimationState(newAnimation)
+  } else {
+    console.log(`⚠️ Watcher fired but condition failed: newAnimation="${newAnimation}", comedian=${!!comedian}`)
+  }
+})
+
+// Watch for expression sync updates
+watch(() => props.syncExpression, (newExpression, oldExpression) => {
+  console.log(`🔍 [Watcher] syncExpression changed: "${oldExpression}" → "${newExpression}"`)
+  if (newExpression && comedian) {
+    console.log(`😊 Setting expression to: ${newExpression}`)
+    setExpression(newExpression)
+  } else {
+    console.log(`⚠️ Expression watcher fired but condition failed: newExpression="${newExpression}", comedian=${!!comedian}`)
   }
 })
 
