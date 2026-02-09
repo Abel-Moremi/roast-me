@@ -9,6 +9,11 @@ on:
       - '.github/workflows/deploy-cloud-function.yml'
   workflow_dispatch:
 
+# Prevents multiple deployments from running at the same time
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -25,13 +30,12 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure gcloud project
-        run: gcloud config set project fun-series-gcloud
-
       - name: Deploy Cloud Function
+        id: deploy
         run: |
           gcloud functions deploy roast_me \
-            --runtime python3.12 \
+            --gen2 \
+            --runtime python314 \
             --trigger-http \
             --allow-unauthenticated \
             --entry-point roast_image \
@@ -40,17 +44,12 @@ jobs:
             --memory 2GB \
             --timeout 540 \
             --set-env-vars GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},ENABLE_AUDIO_TEST=false \
-            --no-user-output-enabled
+            --project fun-series-gcloud \
+            --quiet
 
       - name: Display Function URL
         run: |
-          gcloud functions describe roast_me \
-            --region us-central1 \
-            --format='value(httpsTrigger.url)' > function-url.txt
-          cat function-url.txt
-
-      - name: Post deployment info
-        if: success()
-        run: |
-          echo "✅ Cloud Function deployed successfully!"
-          echo "Function URL: $(cat function-url.txt)"
+          # Gen 2 URL extraction path is slightly different
+          URL=$(gcloud functions describe roast_me --region us-central1 --format='value(url)')
+          echo "✅ Deployed successfully!"
+          echo "Function URL: $URL"
