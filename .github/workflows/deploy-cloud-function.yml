@@ -27,6 +27,8 @@ jobs:
 
       - name: Configure gcloud project
         run: gcloud config set project fun-series-gcloud
+
+      - name: Deploy Cloud Function
         run: |
           gcloud functions deploy roast_me \
             --runtime python3.11 \
