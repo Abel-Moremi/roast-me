@@ -26,7 +26,7 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 @functions_framework.http
-def roast_image(request):
+def roast_me(request):
     """
     HTTP Cloud Function to generate roasts from images.
     
