@@ -25,11 +25,11 @@ export function useJawMovement() {
     // Audio analysis
     FREQUENCY_SMOOTHING: 0.7, // Smooth jaw movement over time
     MIN_AUDIO_THRESHOLD: 0.05, // Minimum audio intensity to trigger jaw
-    OPEN_RANGE: [0.1, 0.9], // Min and max jaw opening values
+    OPEN_RANGE: [0.15, 1.0], // Min and max jaw opening values - increased for more dramatic mouth
 
     // Animation
-    RESPONSE_SPEED: 0.15, // How quickly jaw responds to audio (0-1, higher = faster)
-    CLOSE_SPEED: 0.12 // How quickly jaw closes when silent (0-1, higher = faster)
+    RESPONSE_SPEED: 0.2, // How quickly jaw responds to audio (0-1, higher = faster) - faster response
+    CLOSE_SPEED: 0.18 // How quickly jaw closes when silent (0-1, higher = faster) - faster close
   }
 
   // ============================================
@@ -124,8 +124,9 @@ export function useJawMovement() {
       // Combine mid and high frequencies for natural jaw movement
       // Mid frequencies control baseline opening
       // High frequencies add intensity (consonants, excitement)
-      const baseOpening = midFreq * 0.6
-      const intensityBoost = highFreq * 0.4
+      // Increased weights for more dramatic mouth movement
+      const baseOpening = midFreq * 0.5
+      const intensityBoost = highFreq * 0.5
 
       targetJawOpening.value = Math.min(
         1,

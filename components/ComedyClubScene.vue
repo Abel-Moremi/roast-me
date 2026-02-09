@@ -10,6 +10,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { useBlinking } from '@/composables/useBlinking'
 import { useJawMovement } from '@/composables/useJawMovement'
+import { useMouthAnimation } from '@/composables/useMouthAnimation'
 import { useAnimationManager } from '@/composables/animation/useAnimationManager'
 
 // ============================================
@@ -35,7 +36,13 @@ const emit = defineEmits(['roastFrameClicked', 'photoClicked', 'sceneReady'])
 // COMPOSABLES
 // ============================================
 const { initializeBlinking, updateBlinking, eyeMorphTargets: blinkEyeMorphTargets } = useBlinking()
-const { initializeJawMovement, updateJawFromAudio, updateJawAnimation } = useJawMovement()
+const { initializeJawMovement, updateJawFromAudio, updateJawAnimation, currentJawOpening } = useJawMovement()
+const { 
+  initialize: initMouthAnimation,
+  updateFromAudio: updateMouthFromAudio,
+  debug: debugMouth,
+  mouthState
+} = useMouthAnimation()
 const { 
   initialize: initAnimationManager,
   setState: setAnimationState,
@@ -85,6 +92,7 @@ let raycaster, mouse
 // FACIAL EXPRESSION SYSTEM
 // ============================================
 let mouthMorphTargets = {} // Map of mesh names to morph target data
+let teethMorphTargets = [] // Array of morph target indices that control teeth visibility
 let morphStateBaseline = {} // Baseline morph states
 let morphStateCurrent = {} // Current morph states during animation
 
@@ -140,6 +148,38 @@ onMounted(() => {
   window.debugAnimBones = debugAnimBones
   window.debugAnimModel = debugAnimModel
   window.debugAnimAvailableStates = debugAnimAvailableStates
+  
+  // Expose teeth debug controls
+  window.showTeeth = () => {
+    teethMorphTargets.forEach(({ meshName, morphIndex, morphName }) => {
+      const meshData = mouthMorphTargets[meshName]
+      if (meshData && meshData.mesh && meshData.mesh.morphTargetInfluences) {
+        meshData.mesh.morphTargetInfluences[morphIndex] = 1.0
+        console.log(`✓ Teeth visible: ${meshName}.${morphName} = 1.0`)
+      }
+    })
+  }
+  window.hideTeeth = () => {
+    teethMorphTargets.forEach(({ meshName, morphIndex, morphName }) => {
+      const meshData = mouthMorphTargets[meshName]
+      if (meshData && meshData.mesh && meshData.mesh.morphTargetInfluences) {
+        meshData.mesh.morphTargetInfluences[morphIndex] = 0.0
+        console.log(`✗ Teeth hidden: ${meshName}.${morphName} = 0.0`)
+      }
+    })
+  }
+  window.debugTeeth = () => {
+    console.log(`Found ${teethMorphTargets.length} teeth-controlling morphs:`)
+    teethMorphTargets.forEach(({ meshName, morphIndex, morphName }) => {
+      const meshData = mouthMorphTargets[meshName]
+      const currentValue = meshData?.mesh?.morphTargetInfluences?.[morphIndex] || 0
+      console.log(`  [${morphIndex}] ${meshName}.${morphName} = ${currentValue.toFixed(2)}`)
+    })
+  }
+  window.debugMouth = () => {
+    debugMouth()
+  }
+  
   console.log('✓ Global animation functions available:')
   console.log('  - window.setAnimationState(state)')
   console.log('  - window.holdAnimationState(state)  // Lock to state')
@@ -148,6 +188,10 @@ onMounted(() => {
   console.log('  - window.debugAnimBones()')
   console.log('  - window.debugAnimModel()')
   console.log('  - window.debugAnimAvailableStates()')
+  console.log('  - window.showTeeth()                // Force teeth visible')
+  console.log('  - window.hideTeeth()                // Force teeth hidden')
+  console.log('  - window.debugTeeth()               // Show teeth info')
+  console.log('  - window.debugMouth()               // Show mouth animation state')
 })
 
 onBeforeUnmount(() => {
@@ -788,6 +832,49 @@ function loadComedianModel() {
       Object.entries(mouthMorphTargets).forEach(([meshName, data]) => {
         console.log(`  ${meshName}: ${data.targetCount} targets (${data.targetNames.slice(0, 3).join(', ')}${data.targetCount > 3 ? '...' : ''})`)
       })
+
+      // Debug: Log ALL meshes to help identify teeth meshes
+      console.log('🔍 ALL MESHES IN CHARACTER MODEL:')
+      let meshCount = 0
+      comedian.traverse((child) => {
+        if (child.isMesh) {
+          meshCount++
+          console.log(`  [${meshCount}] ${child.name || 'unnamed'} | Visible: ${child.visible} | Has morphTargets: ${child.morphTargetInfluences ? child.morphTargetInfluences.length : 0}`)
+        }
+      })
+
+      // Find morph targets that control teeth/mouth visibility
+      teethMorphTargets = []
+      Object.entries(mouthMorphTargets).forEach(([meshName, meshData]) => {
+        if (!meshData.targetNames) return
+        
+        meshData.targetNames.forEach((targetName, index) => {
+          if (!targetName) return
+          
+          // ONLY use V_ prefix morphs - these are the visibility morphs that show/hide teeth
+          // V_Open, V_Explosive, V_Dental_Lip, etc. control mouth interior visibility
+          const isVisibilityMorph = /^V_/i.test(targetName)
+          
+          if (isVisibilityMorph && index !== undefined) {
+            teethMorphTargets.push({
+              meshName,
+              morphIndex: index,
+              morphName: targetName
+            })
+            console.log(`✓ Found teeth visibility morph: ${meshName}.${targetName} [idx: ${index}]`)
+          }
+        })
+      })
+      
+      if (teethMorphTargets.length > 0) {
+        console.log(`✅ Found ${teethMorphTargets.length} visibility morphs controlling teeth`)
+      } else {
+        console.log('⚠ No visibility morphs found - mouth may appear closed when talking')
+      }
+
+      // Initialize mouth animation system with morph data
+      initMouthAnimation(mouthMorphTargets, teethMorphTargets)
+      console.log('🗣️ Mouth animation system initialized')
 
       // Initialize blinking system
       const meshesArray = []
@@ -1462,27 +1549,13 @@ function updateLipSync() {
     const audioData = props.getAudioFrequencyData()
     if (!audioData) return
     
-    const { midFreq, highFreq, frequencyData } = audioData
-    
-    // Use frequency data to drive mouth opening
-    // midFreq controls basic mouth opening (0-1)
-    // highFreq adds intensity for consonants
-    const mouthOpenAmount = midFreq * 0.7 + highFreq * 0.3
-    
-    // Calculate audio intensity for jaw movement
+    const { midFreq, highFreq } = audioData
     const audioIntensity = Math.max(midFreq, highFreq)
     
-    // Update jaw movement based on audio
-    if (comedian) {
-      const meshesMap = {}
-      comedian.traverse((child) => {
-        if (child.isMesh && child.morphTargetInfluences) {
-          meshesMap[child.name || `mesh_${Object.keys(meshesMap).length}`] = child
-        }
-      })
-      updateJawFromAudio(0.016, audioIntensity, midFreq, highFreq) // ~60fps delta
-      updateJawAnimation(0.016, meshesMap)
-    }
+    // Use the master mouth animation system to coordinate
+    // jaw, lips, and teeth movement together
+    // This handles all morphTarget updates internally (jaw, lips, teeth)
+    updateMouthFromAudio(audioIntensity, midFreq, highFreq)
     
     // Blend expression based on audio intensity
     // Higher frequencies = more expressive
@@ -1499,31 +1572,6 @@ function updateLipSync() {
         setExpression(EXPRESSIONS.SMILE)
       }
     }
-    
-    // Apply mouth opening modulation via morphTargets
-    Object.entries(mouthMorphTargets).forEach(([meshName, meshData]) => {
-      const influences = meshData.mesh.morphTargetInfluences
-      if (!influences) return
-      
-      // Ensure morph state is initialized
-      if (!morphStateCurrent[meshName]) {
-        morphStateCurrent[meshName] = influences.slice()
-      }
-      
-      // Find and modulate mouth-related morph targets
-      if (meshData.targetNames && meshData.targetNames.length > 0) {
-        meshData.targetNames.forEach((targetName, index) => {
-          // Apply mouth opening to likely mouth targets
-          if (targetName.toLowerCase().includes('mouth') || 
-              targetName.toLowerCase().includes('lip') ||
-              targetName.toLowerCase().includes('jaw')) {
-            influences[index] = Math.max(0, Math.min(1, 
-              (morphStateCurrent[meshName][index] || 0) * 0.8 + mouthOpenAmount * 0.2
-            ))
-          }
-        })
-      }
-    })
   } catch (error) {
     console.warn('Error updating lip-sync:', error)
   }
