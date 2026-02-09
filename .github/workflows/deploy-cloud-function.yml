@@ -35,7 +35,6 @@ jobs:
         run: |
           gcloud functions deploy roast_me \
             --gen2 \
-            --runtime python314 \
             --trigger-http \
             --allow-unauthenticated \
             --entry-point roast_image \
