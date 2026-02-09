@@ -38,7 +38,7 @@ jobs:
             --runtime python310 \
             --trigger-http \
             --allow-unauthenticated \
-            --entry-point roast_image \
+            --entry-point roast_me \
             --source functions/ \
             --region us-central1 \
             --memory 2GB \
