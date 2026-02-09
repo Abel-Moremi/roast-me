@@ -1,0 +1,52 @@
+name: Deploy Cloud Function
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'functions/**'
+      - '.github/workflows/deploy-cloud-function.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          project_id: fun-series-gcloud
+          export_default_credentials: true
+
+      - name: Deploy Cloud Function
+        run: |
+          gcloud functions deploy roast_me \
+            --runtime python3.11 \
+            --trigger-http \
+            --allow-unauthenticated \
+            --entry-point roast_image \
+            --source functions/ \
+            --region us-central1 \
+            --memory 2GB \
+            --timeout 540 \
+            --set-env-vars GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},ENABLE_AUDIO_TEST=false \
+            --no-user-output-enabled
+
+      - name: Display Function URL
+        run: |
+          gcloud functions describe roast_me \
+            --region us-central1 \
+            --format='value(httpsTrigger.url)' > function-url.txt
+          cat function-url.txt
+
+      - name: Post deployment info
+        if: success()
+        run: |
+          echo "✅ Cloud Function deployed successfully!"
+          echo "Function URL: $(cat function-url.txt)"

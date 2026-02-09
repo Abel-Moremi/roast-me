@@ -10,3 +10,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 venv/
+# Exclude test files and temporary data
+temp/
+test_*.py
+.env
+.env.local
+*.wav
+*.mp3
