@@ -1,8 +1,10 @@
 // Composable to load mock roast data from file
 export const useMockRoast = () => {
+  const API_URL = process.env.ROAST_API_URL || '/mock/output.txt'
+
   const loadMockData = async () => {
     try {
-      const response = await fetch('/mock/output.txt')
+      const response = await fetch(API_URL)
       if (!response.ok) {
         throw new Error('Failed to load mock data')
       }
