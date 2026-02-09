@@ -31,7 +31,7 @@ jobs:
       - name: Deploy Cloud Function
         run: |
           gcloud functions deploy roast_me \
-            --runtime python3.11 \
+            --runtime python3.12 \
             --trigger-http \
             --allow-unauthenticated \
             --entry-point roast_image \
