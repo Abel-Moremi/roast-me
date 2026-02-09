@@ -37,7 +37,6 @@ jobs:
             --gen2 \
             --runtime python310 \
             --trigger-http \
-            --allow-unauthenticated \
             --entry-point roast_me \
             --source functions/ \
             --region us-central1 \
