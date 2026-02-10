@@ -23,7 +23,7 @@ TTS_SAMPLE_RATE = 24000
 TTS_AUDIO_MIME_TYPE = "audio/L16;codec=pcm;rate=24000"
 
 # Testing
-ENABLE_AUDIO_TEST = os.environ.get("ENABLE_AUDIO_TEST") == "true"
+ENABLE_AUDIO_TEST = os.environ.get("ENABLE_AUDIO_TEST", "").lower() == "true"
 
 # CORS Configuration
 CORS_HEADERS = {

@@ -136,8 +136,9 @@ async function captureImage() {
 
 async function sendToAPI(base64Image) {
   try {
-    // Mock API endpoint - replace with your actual endpoint
-    const response = await fetch('https://your-api-endpoint.com/roast', {
+    // Use environment variable or fallback
+    const apiUrl = import.meta.env.VITE_ROAST_API_URL || process.env.ROAST_API_URL || 'https://your-api-endpoint.com/roast'
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
