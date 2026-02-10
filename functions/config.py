@@ -7,7 +7,7 @@ from google.genai import types
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # Model Configuration
-VISION_MODEL = "gemini-3-pro-preview"
+VISION_MODEL = "gemini-3-flash-preview"
 TTS_MODEL = "gemini-2.5-flash-preview-tts"
 TTS_VOICE = "Algenib"
 
