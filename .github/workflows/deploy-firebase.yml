@@ -35,6 +35,16 @@ jobs:
         env:
           ENABLE_AUDIO_TEST: 'false'
           VITE_ROAST_API_URL: ${{ secrets.ROAST_API_URL }}
+      
+      - name: Validate environment configuration
+        run: |
+          if [ -z "${{ secrets.ROAST_API_URL }}" ]; then
+            echo "⚠️  WARNING: ROAST_API_URL secret is not set!"
+            echo "The application will fall back to mock data."
+            echo "To use the real API, set the ROAST_API_URL secret to your Cloud Function URL."
+          else
+            echo "✅ ROAST_API_URL is configured"
+          fi
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0

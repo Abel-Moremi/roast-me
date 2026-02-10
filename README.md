@@ -456,13 +456,24 @@ The repository includes GitHub Actions workflows for automated deployment:
 - `.github/workflows/deploy-cloud-function.yml` - Deploys backend
 
 **Setup**:
-1. Add secrets to GitHub repository settings:
-   - `GEMINI_API_KEY`
-   - `FIREBASE_TOKEN` (from `firebase login:ci`)
-   - `GCP_PROJECT_ID`
-   - `GCP_SERVICE_ACCOUNT_JSON`
+1. Add required secrets to GitHub repository settings (Settings → Secrets and variables → Actions):
+   - `GEMINI_API_KEY` - Your Google Gemini API key
+   - `FIREBASE_TOKEN` - From `firebase login:ci`
+   - `GCP_PROJECT_ID` - Your GCP project ID
+   - `GCP_SERVICE_ACCOUNT_JSON` - Service account JSON key
+   - `ROAST_API_URL` - **CRITICAL**: URL of your deployed Cloud Function
+     - Format: `https://[REGION]-[PROJECT-ID].cloudfunctions.net/roast_me`
+     - Get it from: `gcloud functions describe roast_me --format="value(httpsTrigger.url)"`
 
-2. Push to trigger automatic deployment
+2. Push to main branch to trigger automatic deployment
+
+> **⚠️ Important**: If `ROAST_API_URL` secret is not set, the frontend will fall back to mock data. Check GitHub Actions for warnings about missing secrets.
+
+**Verifying Deployment**:
+1. After deployment, open DevTools (F12)
+2. Go to Network tab
+3. Capture a photo - check if requests go to real API or `/mock/output.txt`
+4. If using mock, verify `ROAST_API_URL` secret is set
 
 ---
 
@@ -509,6 +520,22 @@ The repository includes GitHub Actions workflows for automated deployment:
 - Verify animation timeline duration matches audio duration
 - Check browser DevTools Timing for frame drops
 - Reduce animation complexity in `useProceduralAnimations.js`
+
+#### Issue: "Production shows mock data instead of real API"
+**Solution**:
+- In GitHub, settings → Secrets and variables → Actions
+- Verify `ROAST_API_URL` secret is set to your Cloud Function URL
+- Format should be: `https://[REGION]-[PROJECT-ID].cloudfunctions.net/roast_me`
+- After adding secret, push code or use workflow_dispatch to redeploy
+- GitHub Actions will warn if secret is missing (check Actions tab)
+
+#### Issue: "net::ERR_NAME_NOT_RESOLVED in production"
+**Solution**:
+- This means the API URL environment variable is not configured
+- Check DevTools (F12) → Console for debug logs
+- Verify you have set the `ROAST_API_URL` GitHub secret (not just in `.env`)
+- `.env` works locally but GitHub Actions secrets are needed for production
+- Redeploy after adding the secret: `git push` or use Actions tab to run workflow manually
 
 ### Debug Mode
 

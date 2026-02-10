@@ -424,33 +424,51 @@ async function reRoast() {
   isAnalyzing.value = true
   
   // Send the captured image to the API (same as initial capture)
-  // Use environment variable or fallback to mock endpoint
-  const apiUrl = import.meta.env.VITE_ROAST_API_URL || '/mock/output.txt'
+  // Use environment variable, fallback gracefully to mock
+  const apiUrl = import.meta.env.VITE_ROAST_API_URL
   
-  try {
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        image: capturedImage.value
+  // Only attempt API if URL is configured and not a placeholder
+  if (apiUrl && !apiUrl.includes('your-') && apiUrl.trim().length > 0) {
+    try {
+      console.log('Sending to API:', apiUrl)
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image: capturedImage.value
+        })
       })
-    })
-    
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`)
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      console.log('API Response:', data)
+      handleRoastReceived(data)
+      
+    } catch (error) {
+      console.error('Error sending to API:', error)
+      console.log('API failed, attempting to load mock data...')
+      
+      // Fallback to mock data
+      const { loadMockData } = useMockRoast()
+      const mockResponse = await loadMockData()
+      
+      if (mockResponse) {
+        console.log('Mock data loaded successfully')
+        handleRoastReceived(mockResponse)
+      } else {
+        console.error('Failed to load mock data from file')
+        isAnalyzing.value = false
+        audioError.value = 'Failed to generate roast. Please check your API configuration.'
+      }
     }
-    
-    const data = await response.json()
-    console.log('API Response:', data)
-    handleRoastReceived(data)
-    
-  } catch (error) {
-    console.error('Error sending to API:', error)
-    // For now, use mock response from mock/output.txt as fallback
-    console.log('Using mock response for development')
-    
+  } else {
+    // No API URL configured, use mock directly
+    console.log('No API URL configured, using mock data')
     const { loadMockData } = useMockRoast()
     const mockResponse = await loadMockData()
     
@@ -458,9 +476,9 @@ async function reRoast() {
       console.log('Mock data loaded successfully')
       handleRoastReceived(mockResponse)
     } else {
-      console.error('Failed to load mock data from file')
+      console.error('Failed to load mock data')
       isAnalyzing.value = false
-      audioError.value = 'Failed to generate roast. Please try again.'
+      audioError.value = 'Failed to load roast data. Please configure VITE_ROAST_API_URL or place mock/output.txt'
     }
   }
 }

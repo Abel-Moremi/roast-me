@@ -136,8 +136,15 @@ async function captureImage() {
 
 async function sendToAPI(base64Image) {
   try {
-    // Use environment variable or fallback to mock endpoint
-    const apiUrl = import.meta.env.VITE_ROAST_API_URL || '/mock/output.txt'
+    // Use environment variable if properly configured
+    const apiUrl = import.meta.env.VITE_ROAST_API_URL
+    
+    // Only attempt API if URL is configured and not a placeholder
+    if (!apiUrl || apiUrl.includes('your-') || apiUrl.trim().length === 0) {
+      throw new Error('API endpoint not configured, using mock')
+    }
+    
+    console.log('Sending to API:', apiUrl)
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -160,8 +167,7 @@ async function sendToAPI(base64Image) {
     
   } catch (error) {
     console.error('Error sending to API:', error)
-    // For now, use mock response from mock/output.txt
-    console.log('Using mock response for development')
+    console.log('API failed or not configured, loading mock data...')
     
     // Load actual mock data from file
     const mockResponse = await loadMockData()
