@@ -47,7 +47,7 @@
       />
       
       <!-- Audio Controls (when roast ready) -->
-      <div v-if="roastData" class="fixed bottom-8 right-8 z-20 pointer-events-auto">
+      <div v-if="roastData" class="fixed bottom-8 right-8 z-50 pointer-events-auto">
         <div class="bg-black/90 backdrop-blur-md border border-red-900/70 rounded-lg p-4 shadow-2xl w-80">
           <div class="flex flex-col gap-3">
             <!-- Progress Bar -->
@@ -120,11 +120,12 @@
       </div>
       
       <!-- Analyzing State -->
-      <div v-if="isAnalyzing" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20">
-        <div class="bg-black/90 backdrop-blur-md border border-red-900/70 rounded-lg p-6 shadow-2xl">
+      <div v-if="isAnalyzing" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50">
+        <div class="bg-black/90 backdrop-blur-md border border-red-900/70 rounded-lg p-6 shadow-2xl w-80">
           <div class="flex flex-col items-center gap-4">
             <div class="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-            <p class="text-red-500 text-lg font-bold">ANALYZING...</p>
+            <p class="text-red-500 text-lg font-bold text-center">PREPARING YOUR ROAST...</p>
+            <p class="text-gray-400 text-xs text-center">Generating audio and animations (this may take a moment)</p>
           </div>
         </div>
       </div>
@@ -336,7 +337,7 @@ function handleRoastReceived(data) {
   setTimeout(() => {
     console.log('🎬 Inside setTimeout - initializing sync')
     roastData.value = data
-    isAnalyzing.value = false
+    // Keep analyzing state while decoding audio
     audioError.value = null
     audioBuffer = null
     audioState = AUDIO_STATES.STOPPED
@@ -349,25 +350,36 @@ function handleRoastReceived(data) {
       console.log('🎬 animationScript found, preparing to initialize sync')
       const audioData = data.audio || data.animationScript?.audio
       if (audioData) {
-        // Decode to get actual duration
-        const binaryString = atob(audioData)
-        const bytes = new Uint8Array(binaryString.length)
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i)
+        try {
+          // Decode to get actual duration
+          const binaryString = atob(audioData)
+          const bytes = new Uint8Array(binaryString.length)
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i)
+          }
+          const sampleRate = 24000
+          const numSamples = bytes.length / 2
+          const audioDuration = numSamples / sampleRate
+          
+          console.log('🎬 Initializing sync controller with duration:', audioDuration)
+          console.log('🎬 About to call initSync with script:', data.animationScript)
+          initSync(data.animationScript, audioDuration)
+          console.log('🎬 initSync called successfully')
+          
+          // Only mark as not analyzing AFTER everything is ready
+          isAnalyzing.value = false
+        } catch (error) {
+          console.error('Error decoding audio:', error)
+          audioError.value = 'Failed to decode audio'
+          isAnalyzing.value = false
         }
-        const sampleRate = 24000
-        const numSamples = bytes.length / 2
-        const audioDuration = numSamples / sampleRate
-        
-        console.log('🎬 Initializing sync controller with duration:', audioDuration)
-        console.log('🎬 About to call initSync with script:', data.animationScript)
-        initSync(data.animationScript, audioDuration)
-        console.log('🎬 initSync called successfully')
       } else {
         console.log('🎬 No audio data found')
+        isAnalyzing.value = false
       }
     } else {
       console.log('🎬 No animationScript in data')
+      isAnalyzing.value = false
     }
   }, 1500)
 }
@@ -497,6 +509,9 @@ async function seekAudio(event) {
     pausedAt = seekTime
     currentTime.value = seekTime
     
+    // Update animation sync position
+    syncSeek(seekTime)
+    
     // Restore state after cleanup
     if (wasPlaying) {
       // Temporarily set to stopped during transition, then restart
@@ -536,6 +551,9 @@ async function skipBackward() {
     pausedAt = newTime
     currentTime.value = newTime
     
+    // Update animation sync position
+    syncSeek(newTime)
+    
     // Restore state after cleanup
     if (wasPlaying) {
       // Temporarily set to stopped during transition, then restart
@@ -574,6 +592,9 @@ async function skipForward() {
     // Update position
     pausedAt = newTime
     currentTime.value = newTime
+    
+    // Update animation sync position
+    syncSeek(newTime)
     
     // Restore state after cleanup
     if (wasPlaying) {
@@ -658,6 +679,9 @@ async function startAudioPlayback() {
     // Mark as playing before starting to avoid race conditions
     audioState = AUDIO_STATES.PLAYING
     isPlaying.value = true
+    
+    // Notify sync controller that audio is playing
+    setSyncPlaying(true)
     
     audioSource.start(0, pausedAt)
     startTime = audioContext.currentTime - pausedAt
@@ -844,6 +868,9 @@ async function pauseAudio() {
   
   audioState = AUDIO_STATES.PAUSED
   isPlaying.value = false
+  
+  // Notify sync controller that audio is paused
+  setSyncPlaying(false)
   
   console.log('Audio paused at:', pausedAt)
 }
