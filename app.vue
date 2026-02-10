@@ -411,10 +411,46 @@ async function reRoast() {
   // Trigger re-analysis with the same image
   isAnalyzing.value = true
   
-  // Call the mock API again (or real API in production)
-  const { loadMockData } = useMockRoast()
-  const data = await loadMockData()
-  handleRoastReceived(data)
+  // Send the captured image to the API (same as initial capture)
+  // Use environment variable or fallback to mock endpoint
+  const apiUrl = import.meta.env.VITE_ROAST_API_URL || '/mock/output.txt'
+  
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        image: capturedImage.value
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    console.log('API Response:', data)
+    handleRoastReceived(data)
+    
+  } catch (error) {
+    console.error('Error sending to API:', error)
+    // For now, use mock response from mock/output.txt as fallback
+    console.log('Using mock response for development')
+    
+    const { loadMockData } = useMockRoast()
+    const mockResponse = await loadMockData()
+    
+    if (mockResponse) {
+      console.log('Mock data loaded successfully')
+      handleRoastReceived(mockResponse)
+    } else {
+      console.error('Failed to load mock data from file')
+      isAnalyzing.value = false
+      audioError.value = 'Failed to generate roast. Please try again.'
+    }
+  }
 }
 
 async function toggleAudio() {

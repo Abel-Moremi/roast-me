@@ -34,7 +34,7 @@ jobs:
         run: npm run generate
         env:
           ENABLE_AUDIO_TEST: 'false'
-          ROAST_API_URL: ${{ secrets.ROAST_API_URL }}
+          VITE_ROAST_API_URL: ${{ secrets.ROAST_API_URL }}
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0

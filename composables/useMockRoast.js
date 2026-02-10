@@ -1,6 +1,6 @@
 // Composable to load mock roast data from file
 export const useMockRoast = () => {
-  const API_URL = process.env.ROAST_API_URL || '/mock/output.txt'
+  const API_URL = import.meta.env.VITE_ROAST_API_URL || '/mock/output.txt'
 
   const loadMockData = async () => {
     try {
