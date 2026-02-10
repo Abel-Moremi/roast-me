@@ -11,6 +11,7 @@ Get roasted by an AI comedian with synchronized 3D animations and realistic audi
 ## 📋 Table of Contents
 
 - [Overview](#overview)
+- [Demo](#demo)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
@@ -37,6 +38,16 @@ Roast-Me combines cutting-edge AI technology with 3D animations to create a uniq
 - **Google Cloud Functions** for serverless backend processing
 
 The entire pipeline is seamless: capture a photo → AI analysis → roast generation → audio synthesis → synchronized 3D animation → comedic delivery.
+
+---
+
+## 🎥 Demo
+
+Watch Roast-Me in action:
+
+[![Watch the demo](https://img.youtube.com/vi/Cd-LDGmjxfI/0.jpg)](https://youtu.be/Cd-LDGmjxfI)
+
+**[View Full Demo on YouTube](https://youtu.be/Cd-LDGmjxfI)**
 
 ---
 
