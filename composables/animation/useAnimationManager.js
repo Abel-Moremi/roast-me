@@ -59,6 +59,10 @@ export function useAnimationManager() {
   const audioIntensity = ref(0)
   const isEnabled = ref(true)
 
+  // Tracks the currently playing THREE.AnimationAction so transitions can
+  // crossfade out of it instead of leaving it running at full weight
+  let currentAction = null
+
   // ============================================
   // COMPUTED PROPERTIES
   // ============================================
@@ -244,8 +248,23 @@ export function useAnimationManager() {
       animData.action.clampWhenFinished = false
     }
 
-    animData.action.reset()
-    animData.action.play()
+    const newAction = animData.action
+    const previousAction = currentAction
+
+    if (previousAction && previousAction !== newAction && fadeDuration > 0) {
+      // Crossfade: ease the old action's weight to 0 while easing the new
+      // one to 1, so both actions blend smoothly instead of the old one
+      // continuing to play at full weight indefinitely.
+      previousAction.fadeOut(fadeDuration)
+      newAction.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(fadeDuration).play()
+    } else {
+      if (previousAction && previousAction !== newAction) {
+        previousAction.stop()
+      }
+      newAction.reset().setEffectiveWeight(1).play()
+    }
+
+    currentAction = newAction
     return true
   }
 

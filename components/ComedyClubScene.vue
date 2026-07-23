@@ -30,7 +30,7 @@ const props = defineProps({
   syncIntensity: Number
 })
 
-const emit = defineEmits(['roastFrameClicked', 'photoClicked', 'sceneReady'])
+const emit = defineEmits(['roastFrameClicked', 'photoClicked', 'sceneReady', 'characterLoadProgress'])
 
 // ============================================
 // COMPOSABLES
@@ -108,7 +108,10 @@ const EXPRESSIONS = {
 let currentExpression = EXPRESSIONS.NEUTRAL
 let targetExpression = EXPRESSIONS.NEUTRAL
 let expressionBlendFactor = 0
-const EXPRESSION_BLEND_SPEED = 0.05
+// Blend rate in units/second (equivalent to the old per-frame 0.05 step at 60fps),
+// applied as EXPRESSION_BLEND_SPEED * delta so transitions take the same wall-clock
+// time regardless of framerate.
+const EXPRESSION_BLEND_SPEED = 3.0
 
 // ============================================
 // CONSTANTS
@@ -915,7 +918,11 @@ function loadComedianModel() {
       emit('sceneReady')
     },
     (progress) => {
-      console.log('Loading comedian model:', (progress.loaded / progress.total * 100).toFixed(2) + '%')
+      if (progress.lengthComputable && progress.total > 0) {
+        const percent = (progress.loaded / progress.total) * 100
+        console.log('Loading comedian model:', percent.toFixed(2) + '%')
+        emit('characterLoadProgress', percent)
+      }
     },
     (error) => {
       console.error('Error loading comedian model:', error)
@@ -1133,18 +1140,43 @@ function projectImageOnWall(imageDataUrl) {
   img.src = imageDataUrl
 }
 
+let flashState = null
+
 function flashEffect() {
-  // Bright flash - entire scene lights up
-  const originalAmbient = ambientLight.intensity
-  const originalMain = spotlightMain.intensity
-  
+  // Bright flash - entire scene lights up, then eases back to normal
+  // (eased in updateFlashEffect() from the render loop instead of a hard
+  // setTimeout snap, so it fades rather than popping back instantly)
+  // If a flash is already in progress, keep its recorded baseline instead
+  // of capturing the still-elevated current intensity as the target.
+  const ambientTo = flashState ? flashState.ambientTo : ambientLight.intensity
+  const mainTo = flashState ? flashState.mainTo : spotlightMain.intensity
+
   ambientLight.intensity = 3
   spotlightMain.intensity = 15
-  
-  setTimeout(() => {
-    ambientLight.intensity = originalAmbient
-    spotlightMain.intensity = originalMain
-  }, 100)
+
+  flashState = {
+    ambientFrom: 3,
+    mainFrom: 15,
+    ambientTo,
+    mainTo,
+    duration: 0.3,
+    elapsed: 0
+  }
+}
+
+function updateFlashEffect(delta) {
+  if (!flashState) return
+
+  flashState.elapsed += delta
+  const t = Math.min(1, flashState.elapsed / flashState.duration)
+  const eased = 1 - Math.pow(1 - t, 2) // ease-out quad
+
+  ambientLight.intensity = flashState.ambientFrom + (flashState.ambientTo - flashState.ambientFrom) * eased
+  spotlightMain.intensity = flashState.mainFrom + (flashState.mainTo - flashState.mainFrom) * eased
+
+  if (t >= 1) {
+    flashState = null
+  }
 }
 
 // ============================================
@@ -1420,7 +1452,7 @@ function setExpression(expressionName, immediate = false) {
 function updateFacialExpression(delta) {
   // Smoothly blend toward target expression
   if (currentExpression !== targetExpression) {
-    expressionBlendFactor = Math.min(1, expressionBlendFactor + EXPRESSION_BLEND_SPEED)
+    expressionBlendFactor = Math.min(1, expressionBlendFactor + EXPRESSION_BLEND_SPEED * delta)
     
     if (expressionBlendFactor >= 1) {
       currentExpression = targetExpression
@@ -1538,7 +1570,10 @@ function animate() {
   if (props.audioPlaying && props.getAudioFrequencyData) {
     updateLipSync()
   }
-  
+
+  // Ease the photo-capture flash back to its baseline intensity
+  updateFlashEffect(delta)
+
   if (renderer && scene && camera) {
     renderer.render(scene, camera)
   }

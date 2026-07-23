@@ -29,6 +29,7 @@
           :syncExpression="syncExpression"
           :syncIntensity="syncIntensity"
           @sceneReady="handleSceneReady"
+          @characterLoadProgress="handleCharacterLoadProgress"
           @roastFrameClicked="showRoastModal = true"
           @photoClicked="showPhotoModal = true"
         />
@@ -212,11 +213,19 @@ const {
   startSceneLoading,
   completeSceneLoading,
   startCharacterLoading,
+  updateCharacterProgress,
   completeCharacterLoading,
   startAnimationSetup,
   completeAnimationSetup,
   completeLoading
 } = useLoadingState()
+
+// Scene setup, the character GLTF fetch, and animation-manager init all begin
+// as soon as ComedyClubScene mounts, so mark all three stages "started" now
+// rather than staggering them behind arbitrary delays.
+startSceneLoading()
+startCharacterLoading()
+startAnimationSetup()
 
 const capturedImage = ref(null)
 const roastData = ref(null)
@@ -278,18 +287,21 @@ watch(() => syncExpression.value, (newVal, oldVal) => {
  * Called when ComedyClubScene is ready (scene initialized, character loaded)
  */
 function handleSceneReady() {
+  // ComedyClubScene only emits this after the GLTF has fully loaded and the
+  // animation manager has been initialized on it, so all three stages are
+  // genuinely complete at this point - no need to fake staggered timing.
   console.log('🎉 Scene ready - all components initialized')
   completeSceneLoading()
-  startCharacterLoading()
-  // Simulate character and animation loading as they happen in parallel
-  setTimeout(() => {
-    completeCharacterLoading()
-    startAnimationSetup()
-  }, 500)
-  setTimeout(() => {
-    completeAnimationSetup()
-    completeLoading()
-  }, 1000)
+  completeCharacterLoading()
+  completeAnimationSetup()
+  completeLoading()
+}
+
+/**
+ * Called with real download progress (0-100) while the character GLTF streams in
+ */
+function handleCharacterLoadProgress(percent) {
+  updateCharacterProgress(percent)
 }
 
 /**
@@ -532,9 +544,9 @@ async function seekAudio(event) {
     
     // Restore state after cleanup
     if (wasPlaying) {
-      // Temporarily set to stopped during transition, then restart
+      // Cleanup above already stopped/disconnected the previous source
+      // synchronously, so we can restart immediately.
       audioState = AUDIO_STATES.STOPPED
-      await new Promise(resolve => setTimeout(resolve, 10))
       await startAudioPlayback()
     } else if (wasPaused) {
       // Preserve paused state after seeking
@@ -574,9 +586,9 @@ async function skipBackward() {
     
     // Restore state after cleanup
     if (wasPlaying) {
-      // Temporarily set to stopped during transition, then restart
+      // Cleanup above already stopped/disconnected the previous source
+      // synchronously, so we can restart immediately.
       audioState = AUDIO_STATES.STOPPED
-      await new Promise(resolve => setTimeout(resolve, 10))
       await startAudioPlayback()
     } else if (wasPaused) {
       // Preserve paused state after skipping
@@ -616,9 +628,9 @@ async function skipForward() {
     
     // Restore state after cleanup
     if (wasPlaying) {
-      // Temporarily set to stopped during transition, then restart
+      // Cleanup above already stopped/disconnected the previous source
+      // synchronously, so we can restart immediately.
       audioState = AUDIO_STATES.STOPPED
-      await new Promise(resolve => setTimeout(resolve, 10))
       await startAudioPlayback()
     } else if (wasPaused) {
       // Preserve paused state after skipping
@@ -653,9 +665,6 @@ async function cleanupAudioSource() {
     cancelAnimationFrame(animationFrameId)
     animationFrameId = null
   }
-  
-  // Small delay for cleanup to complete
-  await new Promise(resolve => setTimeout(resolve, 5))
 }
 
 async function startAudioPlayback() {
@@ -679,16 +688,17 @@ async function startAudioPlayback() {
   try {
     audioSource = audioContext.createBufferSource()
     audioSource.buffer = audioBuffer
-    audioSource.connect(audioContext.destination)
-    
+
     // Create analyser for lip-syncing
     if (!audioAnalyser) {
       audioAnalyser = audioContext.createAnalyser()
       audioAnalyser.fftSize = 256
       audioAnalyser.smoothingTimeConstant = 0.8
     }
-    
-    // Connect source to analyser
+
+    // Route source -> analyser -> destination (single path; connecting
+    // source directly to destination as well as through the analyser
+    // doubles the output signal)
     audioSource.connect(audioAnalyser)
     audioAnalyser.connect(audioContext.destination)
     
