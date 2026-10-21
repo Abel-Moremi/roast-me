@@ -26,11 +26,31 @@ TTS_AUDIO_MIME_TYPE = "audio/L16;codec=pcm;rate=24000"
 ENABLE_AUDIO_TEST = os.environ.get("ENABLE_AUDIO_TEST", "").lower() == "true"
 
 # CORS Configuration
-CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-}
+# Comma-separated list of origins allowed to call the function, e.g.
+# "https://fun-series-gcloud.web.app,http://localhost:3000".
+# Defaults to "*" (any origin) when unset.
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("ALLOWED_ORIGINS", "*").split(",")
+    if origin.strip()
+]
+
+
+def get_cors_headers(request_origin=None):
+    """Build CORS headers, echoing the caller's origin only if it is allowed."""
+    if "*" in ALLOWED_ORIGINS:
+        allow_origin = "*"
+    elif request_origin in ALLOWED_ORIGINS:
+        allow_origin = request_origin
+    else:
+        allow_origin = ALLOWED_ORIGINS[0] if ALLOWED_ORIGINS else ""
+
+    return {
+        "Access-Control-Allow-Origin": allow_origin,
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Vary": "Origin",
+    }
 
 # Roast Schema
 ROAST_SCHEMA = types.Schema(

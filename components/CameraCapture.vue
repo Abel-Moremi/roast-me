@@ -60,15 +60,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, defineEmits } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 
 const videoRef = ref(null)
 const canvasRef = ref(null)
 const loading = ref(false)
 let stream = null
 
-const emit = defineEmits(['imageCaptured', 'roastReceived'])
-const { loadMockData } = useMockRoast()
+const emit = defineEmits(['imageCaptured'])
 
 onMounted(async () => {
   try {
@@ -119,142 +118,14 @@ async function captureImage() {
     const ctx = canvas.getContext('2d')
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
     
-    // Convert to base64
+    // Convert to base64 and hand it to the app, which sends it to the API
     const base64Image = canvas.toDataURL('image/jpeg', 0.9)
-    
-    // Send to API
-    await sendToAPI(base64Image)
-    
     emit('imageCaptured', base64Image)
   } catch (error) {
     console.error('Error capturing image:', error)
     alert('Failed to capture image. Please try again.')
   } finally {
     loading.value = false
-  }
-}
-
-async function sendToAPI(base64Image) {
-  try {
-    // Use environment variable if properly configured
-    const apiUrl = import.meta.env.VITE_ROAST_API_URL
-    
-    // Only attempt API if URL is configured and not a placeholder
-    if (!apiUrl || apiUrl.includes('your-') || apiUrl.trim().length === 0) {
-      throw new Error('API endpoint not configured, using mock')
-    }
-    
-    console.log('Sending to API:', apiUrl)
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        image: base64Image
-      })
-    })
-    
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`)
-    }
-    
-    const data = await response.json()
-    console.log('API Response:', data)
-    
-    // Emit the response data
-    emit('roastReceived', data)
-    
-  } catch (error) {
-    console.error('Error sending to API:', error)
-    console.log('API failed or not configured, loading mock data...')
-    
-    // Load actual mock data from file
-    const mockResponse = await loadMockData()
-    
-    if (mockResponse) {
-      console.log('Mock data loaded successfully')
-      console.log('Audio field exists:', !!mockResponse.audio)
-      console.log('Audio length:', mockResponse.audio?.length || 0)
-      console.log('🎥 CameraCapture - About to emit mockResponse')
-      console.log('🎥 mockResponse type:', typeof mockResponse)
-      console.log('🎥 mockResponse keys:', mockResponse ? Object.keys(mockResponse) : 'null')
-      console.log('🎥 mockResponse.animationScript exists?', !!mockResponse?.animationScript)
-      if (mockResponse?.animationScript) {
-        console.log('🎥   - animationScript.timeline length:', mockResponse.animationScript.timeline?.length)
-      }
-      console.log('🎥 mockResponse structure:', {
-        hasAnimationScript: !!mockResponse?.animationScript,
-        hasAudio: !!mockResponse?.audio,
-        hasAudioMimeType: !!mockResponse?.audioMimeType,
-        hasData: !!mockResponse?.data,
-        hasSuccess: mockResponse?.success !== undefined
-      })
-      console.log('🎥 About to emit event with mockResponse')
-      emit('roastReceived', mockResponse)
-      console.log('🎥 roastReceived event emitted')
-      console.log('🎥 Object.keys(mockResponse) after emit:', Object.keys(mockResponse))
-    } else {
-      console.error('Failed to load mock data from file')
-      // Fallback mock response if file loading fails
-      const fallbackResponse = {
-        animationScript: {
-          metadata: {
-            duration: 109.6,
-            fallback: true,
-            intensity: "medium",
-            notes: "Generated using fallback pattern (state machine compliant)",
-            style: "comedic",
-            transcript: "You look like a Muppet that's been through a dryer on the 'high heat' setting for three days straight."
-          },
-          timeline: [
-            {
-              animation: "idle",
-              endTime: 21.92,
-              expression: "neutral",
-              intensity: 0.4,
-              notes: "Opening - neutral stance, setting up for performance",
-              startTime: 0
-            },
-            {
-              animation: "walk-think",
-              endTime: 49.32,
-              expression: "smile",
-              intensity: 0.6,
-              notes: "Building - contemplative movement, engaging audience",
-              startTime: 21.92
-            },
-            {
-              animation: "spellcast",
-              endTime: 76.72,
-              expression: "laugh",
-              intensity: 0.9,
-              notes: "Climax - high energy gesture with dramatic emphasis",
-              startTime: 49.32
-            },
-            {
-              animation: "aerobic-dance",
-              endTime: 93.16,
-              expression: "laugh",
-              intensity: 0.8,
-              notes: "Peak energy - celebrating the comedic moment",
-              startTime: 76.72
-            },
-            {
-              animation: "relax",
-              endTime: 109.6,
-              expression: "smile",
-              intensity: 0.5,
-              notes: "Closing - settling down with satisfied expression",
-              startTime: 93.16
-            }
-          ]
-        },
-        audio: null,
-        audioMimeType: "audio/L16;codec=pcm;rate=24000"
-      }
-      emit('roastReceived', fallbackResponse)
-    }
   }
 }
 </script>

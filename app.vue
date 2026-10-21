@@ -44,8 +44,14 @@
       <CameraCapture 
         v-if="!capturedImage"
         @imageCaptured="handleImageCaptured"
-        @roastReceived="handleRoastReceived"
       />
+
+      <!-- Error when no roast could be produced at all -->
+      <div v-if="roastError" class="fixed top-8 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+        <div class="bg-black/90 border border-red-900/70 rounded-lg px-4 py-3 text-red-400 text-sm shadow-2xl">
+          {{ roastError }}
+        </div>
+      </div>
       
       <!-- Audio Controls (when roast ready) -->
       <div v-if="roastData" class="fixed bottom-8 right-8 z-50 pointer-events-auto">
@@ -198,7 +204,7 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { useAnimationAudioSync } from '@/composables/useAnimationAudioSync'
-import { useMockRoast } from '@/composables/useMockRoast'
+import { useRoastApi } from '@/composables/useRoastApi'
 import { useLoadingState } from '@/composables/useLoadingState'
 
 // Initialize loading state manager
@@ -233,6 +239,7 @@ const isAnalyzing = ref(false)
 const audioLoading = ref(false)
 const isPlaying = ref(false)
 const audioError = ref(null)
+const roastError = ref(null)
 const showRoastModal = ref(false)
 const showPhotoModal = ref(false)
 const currentTime = ref(0)
@@ -312,9 +319,35 @@ function handleLoadingComplete() {
   // Scene is now fully visible and interactive
 }
 
-function handleImageCaptured(base64Image) {
+const { requestRoast } = useRoastApi()
+
+async function handleImageCaptured(base64Image) {
   capturedImage.value = base64Image
+  await fetchRoast()
+}
+
+/**
+ * Send the captured photo to the API (falling back to mock data) and show
+ * the result. Shared by the first capture and "Roast Again".
+ */
+async function fetchRoast() {
   isAnalyzing.value = true
+  roastError.value = null
+
+  const data = await requestRoast(capturedImage.value)
+
+  if (data?.success && data.data) {
+    handleRoastReceived(data)
+    return
+  }
+
+  console.error('No usable roast response:', data)
+  isAnalyzing.value = false
+  roastError.value = data?.error
+    ? `Roast failed: ${data.error}`
+    : 'Failed to generate roast. Please try again.'
+  // Bring the camera back so the user can retry
+  capturedImage.value = null
 }
 
 function handleRoastReceived(data) {
@@ -433,66 +466,7 @@ async function reRoast() {
   showRoastModal.value = false
   
   // Trigger re-analysis with the same image
-  isAnalyzing.value = true
-  
-  // Send the captured image to the API (same as initial capture)
-  // Use environment variable, fallback gracefully to mock
-  const apiUrl = import.meta.env.VITE_ROAST_API_URL
-  
-  // Only attempt API if URL is configured and not a placeholder
-  if (apiUrl && !apiUrl.includes('your-') && apiUrl.trim().length > 0) {
-    try {
-      console.log('Sending to API:', apiUrl)
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          image: capturedImage.value
-        })
-      })
-      
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
-      }
-      
-      const data = await response.json()
-      console.log('API Response:', data)
-      handleRoastReceived(data)
-      
-    } catch (error) {
-      console.error('Error sending to API:', error)
-      console.log('API failed, attempting to load mock data...')
-      
-      // Fallback to mock data
-      const { loadMockData } = useMockRoast()
-      const mockResponse = await loadMockData()
-      
-      if (mockResponse) {
-        console.log('Mock data loaded successfully')
-        handleRoastReceived(mockResponse)
-      } else {
-        console.error('Failed to load mock data from file')
-        isAnalyzing.value = false
-        audioError.value = 'Failed to generate roast. Please check your API configuration.'
-      }
-    }
-  } else {
-    // No API URL configured, use mock directly
-    console.log('No API URL configured, using mock data')
-    const { loadMockData } = useMockRoast()
-    const mockResponse = await loadMockData()
-    
-    if (mockResponse) {
-      console.log('Mock data loaded successfully')
-      handleRoastReceived(mockResponse)
-    } else {
-      console.error('Failed to load mock data')
-      isAnalyzing.value = false
-      audioError.value = 'Failed to load roast data. Please configure VITE_ROAST_API_URL or place mock/output.txt'
-    }
-  }
+  await fetchRoast()
 }
 
 async function toggleAudio() {

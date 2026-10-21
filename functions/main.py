@@ -8,10 +8,10 @@ from flask import jsonify
 from google import genai
 import logging
 
-from config import GEMINI_API_KEY, CORS_HEADERS
+from config import GEMINI_API_KEY, get_cors_headers
 from utils.image_utils import parse_image_from_request, resize_image, image_to_bytes
 from services.roast_service import generate_roast, build_narration_text
-from services.tts_service import generate_tts_audio, get_audio_mime_type
+from services.tts_service import generate_tts_audio, get_audio_duration, get_audio_mime_type
 from services.animation_service import generate_animation_script
 
 # Configure logging
@@ -36,17 +36,21 @@ def roast_me(request):
     Returns:
         JSON response with roast data and optional audio
     """
+    cors_headers = get_cors_headers(request.headers.get("Origin"))
+
     # Handle CORS preflight
     if request.method == "OPTIONS":
-        return ("", 204, CORS_HEADERS)
+        return ("", 204, cors_headers)
 
     try:
         logger.info("Roast request received")
 
         # Validate API key
         if not GEMINI_API_KEY:
+            logger.error("GEMINI_API_KEY not configured")
             return _error_response(
-                "GEMINI_API_KEY not configured",
+                "Server is not configured",
+                cors_headers,
                 status_code=500
             )
 
@@ -55,6 +59,7 @@ def roast_me(request):
         if image is None:
             return _error_response(
                 "No image provided (base64 JSON or multipart expected)",
+                cors_headers,
                 status_code=400
             )
 
@@ -71,16 +76,17 @@ def roast_me(request):
         # Generate TTS audio
         audio_base64 = generate_tts_audio(client, narration_text)
 
-        # Estimate audio duration (rough estimate: ~150 words per minute = 0.4 seconds per word)
-        word_count = len(narration_text.split())
-        estimated_duration = max(3, word_count * 0.4)  # Minimum 3 seconds
+        # Measure the real audio length so the animation timeline matches
+        # playback. Without audio, the animation service estimates it from
+        # the word count instead.
+        audio_duration = get_audio_duration(audio_base64)
 
-        # Generate animation script based on narration and estimated duration
+        # Generate animation script based on narration and audio duration
         try:
             animation_script = generate_animation_script(
-                client, 
-                narration_text, 
-                estimated_duration
+                client,
+                narration_text,
+                audio_duration
             )
         except Exception as anim_error:
             logger.warning(f"Animation script generation failed, continuing without: {anim_error}")
@@ -99,28 +105,30 @@ def roast_me(request):
         if animation_script:
             response_data["animationScript"] = animation_script
 
-        return jsonify(response_data), 200, CORS_HEADERS
+        return jsonify(response_data), 200, cors_headers
 
     except ValueError as ve:
         # Expected errors (validation, safety filters, etc.)
         logger.warning(f"Validation error: {ve}")
-        return _error_response(str(ve), status_code=400)
+        return _error_response(str(ve), cors_headers, status_code=400)
 
     except Exception as e:
-        # Unexpected errors
+        # Unexpected errors: log the details, but don't send them to the browser
         logger.exception("Roast failed")
         return _error_response(
-            f"Internal server error: {str(e)}",
+            "Internal server error",
+            cors_headers,
             status_code=500
         )
 
 
-def _error_response(message, status_code=500):
+def _error_response(message, cors_headers, status_code=500):
     """
     Create a standardized error response.
     
     Args:
         message: Error message
+        cors_headers: CORS headers for this request
         status_code: HTTP status code
         
     Returns:
@@ -129,4 +137,4 @@ def _error_response(message, status_code=500):
     return jsonify({
         "success": False,
         "error": message,
-    }), status_code, CORS_HEADERS
+    }), status_code, cors_headers

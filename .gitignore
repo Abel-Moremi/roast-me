@@ -145,3 +145,7 @@ dist
 **/.obsidian/cache
 **/.obsidian/plugins/*/data.json
 **/.trash/
+
+# Python bytecode
+__pycache__/
+*.py[cod]

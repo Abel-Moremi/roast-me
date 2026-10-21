@@ -212,7 +212,7 @@ export function useAnimationManager() {
     const stateConfig = ANIMATION_STATES[newState]
     const clipName = stateConfig.clipName
 
-    if (playAnimationClip(clipName, speed)) {
+    if (playAnimationClip(clipName, speed, stateConfig.loopOnce === true)) {
       console.log(`  ✓ Animation started: "${clipName}"`)
       return true
     } else {
@@ -229,7 +229,7 @@ export function useAnimationManager() {
    * @param {number} fadeDuration - Fade duration in seconds
    * @returns {boolean} Success status
    */
-  function playAnimationClip(clipName, fadeDuration = 0.3) {
+  function playAnimationClip(clipName, fadeDuration = 0.3, loopOnce = false) {
     if (!mixer.value) {
       console.error('❌ AnimationManager: Mixer not initialized')
       return false
@@ -244,9 +244,12 @@ export function useAnimationManager() {
     // Create action if needed
     if (!animData.action) {
       animData.action = mixer.value.clipAction(animData.clip)
-      animData.action.loop = THREE.LoopRepeat
-      animData.action.clampWhenFinished = false
     }
+
+    // Transition clips (walk start/end, stand-to-sit) play once and hold
+    // their last pose; everything else loops
+    animData.action.setLoop(loopOnce ? THREE.LoopOnce : THREE.LoopRepeat, Infinity)
+    animData.action.clampWhenFinished = loopOnce
 
     const newAction = animData.action
     const previousAction = currentAction

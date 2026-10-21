@@ -6,10 +6,17 @@ on:
       - main
     paths:
       - 'app.vue'
+      - 'assets/**'
       - 'components/**'
+      - 'composables/**'
       - 'pages/**'
+      - 'public/**'
       - 'nuxt.config.ts'
+      - 'tailwind.config.js'
+      - 'tsconfig.json'
       - 'package.json'
+      - 'package-lock.json'
+      - 'firebase.json'
       - '.github/workflows/deploy-firebase.yml'
   workflow_dispatch:
 

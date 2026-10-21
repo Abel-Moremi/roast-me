@@ -1,21 +1,14 @@
-// Composable to load mock roast data from file
-export const useMockRoast = () => {
-  const API_URL = import.meta.env.VITE_ROAST_API_URL || '/mock/output.txt'
+// Loads the bundled mock roast response, used when the real API is unavailable
+const MOCK_URL = '/mock/output.txt'
 
+export const useMockRoast = () => {
   const loadMockData = async () => {
     try {
-      const response = await fetch(API_URL)
+      const response = await fetch(MOCK_URL)
       if (!response.ok) {
-        throw new Error('Failed to load mock data')
+        throw new Error(`Failed to load mock data: ${response.status}`)
       }
-      const data = await response.json()
-      console.log('📦 useMockRoast.loadMockData() loaded JSON')
-      console.log('📦 Top-level keys in loaded data:', Object.keys(data))
-      console.log('📦 Has animationScript?', !!data.animationScript)
-      console.log('📦 Has audio?', !!data.audio)
-      console.log('📦 Audio is string?', typeof data.audio === 'string')
-      console.log('📦 Audio length:', typeof data.audio === 'string' ? data.audio.length : 'N/A')
-      return data
+      return await response.json()
     } catch (error) {
       console.error('Error loading mock data:', error)
       return null

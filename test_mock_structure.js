@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 
 // Read the mock file
-const mockPath = path.resolve('./mock/output.txt')
+const mockPath = path.resolve('./public/mock/output.txt')
 const content = fs.readFileSync(mockPath, 'utf-8')
 
 try {

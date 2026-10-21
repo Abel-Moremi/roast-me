@@ -17,25 +17,41 @@ def parse_image_from_request(request):
         
     Returns:
         PIL.Image or None if no image found
+
+    Raises:
+        ValueError: If an image was sent but can't be decoded
     """
-    image = None
     request_json = request.get_json(silent=True)
 
-    # Try base64 JSON format
-    if request_json and "image" in request_json:
-        logger.info("Image received as base64")
-        image_base64 = request_json["image"]
-        if "," in image_base64:
-            image_base64 = image_base64.split(",")[1]
-        image_bytes = base64.b64decode(image_base64)
-        image = Image.open(BytesIO(image_bytes))
+    try:
+        # Try base64 JSON format
+        if request_json and "image" in request_json:
+            logger.info("Image received as base64")
+            image_base64 = request_json["image"]
+            if not isinstance(image_base64, str):
+                raise ValueError("'image' must be a base64 string")
+            if "," in image_base64:
+                image_base64 = image_base64.split(",", 1)[1]
+            image_bytes = base64.b64decode(image_base64)
+            image = Image.open(BytesIO(image_bytes))
 
-    # Try multipart upload
-    elif "image" in request.files:
-        logger.info("Image received as multipart upload")
-        image = Image.open(request.files["image"].stream)
+        # Try multipart upload
+        elif "image" in request.files:
+            logger.info("Image received as multipart upload")
+            image = Image.open(request.files["image"].stream)
 
-    return image
+        else:
+            return None
+
+        # Force a full decode now so corrupt files fail here, not later
+        image.load()
+        return image
+
+    except ValueError:
+        raise
+    except Exception as e:
+        logger.warning(f"Could not decode uploaded image: {e}")
+        raise ValueError("Invalid image data") from e
 
 
 def resize_image(image, max_dimension=1024):
@@ -68,6 +84,9 @@ def image_to_bytes(image, format="PNG"):
     Returns:
         bytes: Image data
     """
+    # PNG can't store some modes (e.g. CMYK JPEGs), so normalise first
+    if image.mode not in ("RGB", "RGBA", "L", "LA"):
+        image = image.convert("RGB")
     buffer = BytesIO()
     image.save(buffer, format=format)
     return buffer.getvalue()
