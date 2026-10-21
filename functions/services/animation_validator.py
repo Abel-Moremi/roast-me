@@ -426,15 +426,12 @@ def _validate_posture_rules(
             f"Once 'stand-to-sit' completes, only 'idle' is allowed. "
             f"Suggestion: use 'idle' or add a standing animation before sit transition."
         )
-    
-    # Rule 2: Posture requirement checking
-    if anim_config.get("required_posture") == Posture.STANDING and current_posture == Posture.SITTING:
-        if not is_sitting:  # Only error if not permanently locked
-            issues.append(
-                f"Keyframe {index}: '{animation}' requires standing but character is sitting. "
-                f"Suggestion: place animation before 'stand-to-sit' or use idle."
-            )
-    
+
+    # Sitting always means sit-locked (there is no stand-up animation), so the
+    # sit lock above also covers "standing animation while seated". If a
+    # stand-up clip is ever added, check required_posture against
+    # current_posture here.
+
     return issues
 
 

@@ -48,6 +48,13 @@
             <p class="text-gray-400 text-sm h-6">
               {{ currentStatus.message }}
             </p>
+            <button
+              v-if="error"
+              class="mt-4 px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm"
+              @click="reloadPage"
+            >
+              Reload
+            </button>
           </div>
 
           <!-- Progress Indicator with Dots -->
@@ -177,6 +184,11 @@ const props = defineProps({
   animationProgress: {
     type: Number,
     default: 0
+  },
+  // Set when loading can't finish (e.g. the character model failed to load)
+  error: {
+    type: String,
+    default: null
   }
 })
 
@@ -184,6 +196,10 @@ const props = defineProps({
 // EMITS
 // ============================================
 const emit = defineEmits(['loadingComplete'])
+
+function reloadPage() {
+  window.location.reload()
+}
 
 // ============================================
 // STATE
@@ -218,6 +234,9 @@ const overallProgress = computed(() => {
 const randomTip = computed(() => tips[tipIndex.value])
 
 const currentStatus = computed(() => {
+  if (props.error) {
+    return { title: 'The comedian missed his cue', message: props.error }
+  }
   if (!props.sceneLoaded) {
     return { title: 'Setting up Stage...', message: 'Building the comedy club' }
   }

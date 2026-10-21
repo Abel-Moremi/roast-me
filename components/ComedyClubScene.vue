@@ -26,11 +26,10 @@ const props = defineProps({
   audioDuration: Number,
   getAudioFrequencyData: Function,
   syncAnimation: String,
-  syncExpression: String,
-  syncIntensity: Number
+  syncExpression: String
 })
 
-const emit = defineEmits(['roastFrameClicked', 'photoClicked', 'sceneReady', 'characterLoadProgress'])
+const emit = defineEmits(['roastFrameClicked', 'photoClicked', 'sceneReady', 'characterLoadProgress', 'characterLoadError'])
 
 // ============================================
 // COMPOSABLES
@@ -71,10 +70,11 @@ let ambientLight, spotlightMain, spotlightPhoto
 // SCENE MODELS & MESHES
 // ============================================
 let backgroundWall
-let microphone, micStand
 let comedian = null
 let photoGroup = null
 let roastFrameMesh = null
+let roastGroup = null // roast frame + strings
+let roastLight = null // spotlight on the roast frame
 
 // ============================================
 // ANIMATION STATE
@@ -261,10 +261,7 @@ watch(() => props.syncExpression, (newExpression, oldExpression) => {
 watch(() => props.roastReady, (ready, wasReady) => {
   if (ready && props.roastData) {
     // Remove old roast frame if it exists
-    if (roastFrameMesh) {
-      scene.remove(roastFrameMesh)
-      roastFrameMesh = null
-    }
+    removeRoastFrame()
     
     // Initialize facial expression system if not already done
     if (comedian && Object.keys(mouthMorphTargets).length > 0) {
@@ -276,10 +273,7 @@ watch(() => props.roastReady, (ready, wasReady) => {
     displayRoastText(props.roastData)
   } else if (wasReady && !ready) {
     // Reset: Remove roast frame from scene
-    if (roastFrameMesh) {
-      scene.remove(roastFrameMesh)
-      roastFrameMesh = null
-    }
+    removeRoastFrame()
     // Reset facial expressions
     currentExpression = EXPRESSIONS.NEUTRAL
     targetExpression = EXPRESSIONS.NEUTRAL
@@ -426,8 +420,6 @@ function initScene() {
   // Animated comedian character
   loadComedianModel()
   
-  // Microphone stand
-  // createMicrophoneStand()  // Removed per user request
   
   console.log('Scene initialization complete. Objects in scene:', scene.children.length)
 }
@@ -926,79 +918,11 @@ function loadComedianModel() {
     },
     (error) => {
       console.error('Error loading comedian model:', error)
+      emit('characterLoadError', error)
     }
   )
 }
 
-
-function createMicrophoneStand() {
-  const standGroup = new THREE.Group()
-  
-  // Shared metallic material
-  const metalMaterial = new THREE.MeshStandardMaterial({
-    color: 0x2a2a2a,
-    metalness: 0.9,
-    roughness: 0.15,
-    envMapIntensity: 1.0
-  })
-  
-  // Base - sits on floor
-  const baseHeight = 0.08
-  const baseGeometry = new THREE.CylinderGeometry(0.4, 0.4, baseHeight, 32)
-  const base = new THREE.Mesh(baseGeometry, metalMaterial)
-  base.position.y = baseHeight / 2  // Half height to sit on floor
-  base.castShadow = true
-  base.receiveShadow = true
-  standGroup.add(base)
-  
-  // Pole - connects to top of base
-  const poleHeight = 1.5
-  const poleGeometry = new THREE.CylinderGeometry(0.025, 0.025, poleHeight, 16)
-  const pole = new THREE.Mesh(poleGeometry, metalMaterial)
-  pole.position.y = baseHeight + (poleHeight / 2)  // Base height + half pole height
-  pole.castShadow = true
-  standGroup.add(pole)
-  
-  // Create arm+mic group that pivots from pole top
-  const poleTop = baseHeight + poleHeight
-  const armGroup = new THREE.Group()
-  armGroup.position.set(0, poleTop, 0)  // Pivot point at pole top
-  
-  // Mic holder arm - positioned upward from pivot
-  const armLength = 0.5
-  const armGeometry = new THREE.CylinderGeometry(0.018, 0.018, armLength, 16)
-  const arm = new THREE.Mesh(armGeometry, metalMaterial)
-  arm.position.y = armLength / 2  // Half length up from pivot
-  arm.castShadow = true
-  armGroup.add(arm)
-  
-  // Microphone - at the top of the arm
-  const micGeometry = new THREE.CapsuleGeometry(0.08, 0.2, 8, 16)
-  const micMaterial = new THREE.MeshStandardMaterial({
-    color: 0x1a1a1a,
-    metalness: 0.7,
-    roughness: 0.25,
-    envMapIntensity: 0.8
-  })
-  microphone = new THREE.Mesh(micGeometry, micMaterial)
-  microphone.position.y = armLength  // At end of arm
-  microphone.castShadow = true
-  armGroup.add(microphone)
-  
-  // Now rotate the entire arm+mic group
-  armGroup.rotation.z = Math.PI / 3.5
-  armGroup.rotation.y = -0.2
-  
-  standGroup.add(armGroup)
-  
-  // Position stand on the stage - right side
-  const stageHeight = 0.3
-  standGroup.position.set(2.5, stageHeight, -2.5)
-  standGroup.castShadow = true
-  scene.add(standGroup)
-  
-  micStand = standGroup
-}
 
 // ============================================
 // INTERACTIVE SCENE - IMAGE & ROAST DISPLAY
@@ -1243,49 +1167,69 @@ function displayRoastText(roastData) {
   ctx.textAlign = 'center'
   ctx.fillText('THE ROAST', 256, 80)
   
-  // Extract metadata and timeline from new structure
-  const metadata = roastData.animationScript?.metadata || {}
-  const timeline = roastData.animationScript?.timeline || []
-  
-  // Transcript/Vibe from metadata
+  const roast = roastData?.data || {}
+  const bottomLimit = 560 // keep room for the one-liner and footer
+
+  // Overall vibe
   ctx.fillStyle = '#ffaa88'
   ctx.font = 'italic 20px serif'
-  const vibeText = `"${metadata.transcript || 'Animation roast performance'}"`
-  wrapText(ctx, vibeText, 256, 130, 420, 26)
-  
-  // Animation timeline summary
-  ctx.fillStyle = '#cccccc'
-  ctx.font = '16px monospace'
-  ctx.textAlign = 'left'
-  let y = 220
-  if (timeline && timeline.length > 0) {
-    timeline.slice(0, 8).forEach((frame, i) => {
-      const intensity = frame.intensity !== undefined ? frame.intensity.toFixed(1) : 'N/A'
-      const line = `• ${frame.animation || 'animation'} (${frame.expression || 'expr'}) - ${intensity}`
-      const wrapped = wrapText(ctx, line, 60, y, 390, 20)
-      y += wrapped * 20 + 10
-    })
-  } else {
-    const line = '• No animation timeline available'
-    const wrapped = wrapText(ctx, line, 60, y, 390, 20)
-    y += wrapped * 20 + 10
+  let y = 125
+  for (const line of wrapLines(ctx, `"${roast.overall_vibe || 'Roast incoming...'}"`, 420).slice(0, 3)) {
+    ctx.fillText(line, 256, y)
+    y += 26
   }
-  
-  // Duration and style at bottom
+
+  // As many roast lines as fit; the full list is in the click-to-zoom modal
+  ctx.fillStyle = '#dddddd'
+  ctx.font = '17px serif'
+  ctx.textAlign = 'left'
+  y += 18
+  const roastLines = Array.isArray(roast.roast_lines) ? roast.roast_lines : []
+  let shown = 0
+  for (const text of roastLines) {
+    const wrapped = wrapLines(ctx, `• ${text}`, 400)
+    if (y + wrapped.length * 22 > bottomLimit) break
+    for (const line of wrapped) {
+      ctx.fillText(line, 56, y)
+      y += 22
+    }
+    y += 10
+    shown++
+  }
+
+  ctx.textAlign = 'center'
+  if (shown < roastLines.length) {
+    ctx.fillStyle = '#999999'
+    ctx.font = 'italic 15px serif'
+    ctx.fillText(`+${roastLines.length - shown} more - click to read the full roast`, 256, y + 4)
+  }
+
+  // One-liner
   ctx.fillStyle = '#ff6666'
   ctx.font = 'bold italic 22px serif'
-  ctx.textAlign = 'center'
-  const style = metadata.style || 'comedic'
-  const duration = metadata.duration !== undefined ? metadata.duration.toFixed(2) : '0.00'
-  const metadataText = `"${style} - ${duration}s"`
-  wrapText(ctx, metadataText, 256, y + 40, 420, 28)
-  
+  let oneLinerY = 610
+  for (const line of wrapLines(ctx, `"${roast.one_liner || ''}"`, 420).slice(0, 3)) {
+    ctx.fillText(line, 256, oneLinerY)
+    oneLinerY += 28
+  }
+
+  // Footer: confidence rating and style tags
+  const footer = [
+    Number.isFinite(roast.confidence_rating) ? `Confidence ${roast.confidence_rating}/10` : null,
+    Array.isArray(roast.style_tags) && roast.style_tags.length ? roast.style_tags.slice(0, 3).join(' · ') : null
+  ].filter(Boolean).join('   |   ')
+  if (footer) {
+    ctx.fillStyle = '#b8941e'
+    ctx.font = '14px serif'
+    ctx.fillText(footer, 256, 722)
+  }
+
   // Create texture from canvas
   const texture = new THREE.CanvasTexture(canvas)
   texture.needsUpdate = true
   
   // Create roast sheet with hanging strings
-  const roastGroup = new THREE.Group()
+  roastGroup = new THREE.Group()
   
   // Create frame geometry
   const frameGeometry = new THREE.PlaneGeometry(2.5, 3.5)
@@ -1320,12 +1264,59 @@ function displayRoastText(roastData) {
   scene.add(roastGroup)
   
   // Add spotlight for the text frame
-  const textLight = new THREE.SpotLight(0xffffdd, 4)
+  roastLight = new THREE.SpotLight(0xffffdd, 4)
+  const textLight = roastLight
   textLight.position.set(-8.5, 5, 0)
   textLight.target = roastFrameMesh
   textLight.angle = Math.PI / 8
   textLight.penumbra = 0.4
   scene.add(textLight)
+}
+
+/**
+ * Remove the roast frame, its strings and its spotlight, and free their GPU
+ * resources. The frame mesh sits inside roastGroup, so removing only the mesh
+ * from the scene does nothing.
+ */
+function removeRoastFrame() {
+  if (roastGroup) {
+    scene.remove(roastGroup)
+    roastGroup.traverse((child) => {
+      if (child.isMesh) {
+        child.geometry?.dispose()
+        child.material?.map?.dispose()
+        child.material?.dispose()
+      }
+    })
+    roastGroup = null
+  }
+  if (roastLight) {
+    scene.remove(roastLight)
+    roastLight.dispose?.()
+    roastLight = null
+  }
+  roastFrameMesh = null
+}
+
+/**
+ * Split text into lines that fit maxWidth with the current ctx font
+ * @returns {string[]}
+ */
+function wrapLines(ctx, text, maxWidth) {
+  const words = String(text).split(' ')
+  const lines = []
+  let line = ''
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line)
+      line = word
+    } else {
+      line = test
+    }
+  }
+  if (line) lines.push(line)
+  return lines
 }
 
 function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
@@ -1353,78 +1344,75 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
   return lineCount
 }
 
-// Expression configurations - map which morphTargets to control for each expression
-// Each expression defines how to modify morphTarget influences
+// Expression presets: face shape name -> amount (0-1) added on top of the
+// baseline. Names must match the morph targets in comedian.glb exactly
+// (see docs-roast-me "Expression Catalogue"). Jaw and open-mouth shapes are
+// left to lip sync, which overwrites them while audio plays.
 const expressionConfigs = {
   [EXPRESSIONS.NEUTRAL]: {
     description: 'Neutral/normal expression',
-    morphMods: {} // Will be populated when we know available targets
+    morphMods: {}
   },
   [EXPRESSIONS.SMILE]: {
     description: 'Smiling',
     morphMods: {
-      // Common morph target names for mouth smile/cheek raise
-      'mouthSmile': 0.6,
-      'mouthCornerPullLeft': 0.3,
-      'mouthCornerPullRight': 0.3,
-      'cheekRaise': 0.4,
-      'cheekRaiseLeft': 0.3,
-      'cheekRaiseRight': 0.3,
-      'browRaiseOuter': 0.2
+      'Mouth_Smile_L': 0.5,
+      'Mouth_Smile_R': 0.5,
+      'Cheek_Raise_L': 0.3,
+      'Cheek_Raise_R': 0.3,
+      'Brow_Raise_Outer_Left': 0.15,
+      'Brow_Raise_Outer_Right': 0.15
     }
   },
   [EXPRESSIONS.LAUGH]: {
     description: 'Laughing/big smile',
     morphMods: {
-      'mouthSmile': 1.0,
-      'mouthCornerPullLeft': 0.8,
-      'mouthCornerPullRight': 0.8,
-      'mouthOpen': 0.7,
-      'cheekRaise': 0.8,
-      'cheekRaiseLeft': 0.7,
-      'cheekRaiseRight': 0.7,
-      'eyeSquintLeft': 0.6,
-      'eyeSquintRight': 0.6,
-      'browRaiseOuter': 0.5
+      'Mouth_Smile_L': 0.9,
+      'Mouth_Smile_R': 0.9,
+      'Mouth_Open': 0.4,
+      'Cheek_Raise_L': 0.7,
+      'Cheek_Raise_R': 0.7,
+      'Eye_Squint_L': 0.5,
+      'Eye_Squint_R': 0.5,
+      'Brow_Raise_Outer_Left': 0.4,
+      'Brow_Raise_Outer_Right': 0.4
     }
   },
   [EXPRESSIONS.SHOCKED]: {
     description: 'Shocked/surprised',
     morphMods: {
-      'mouthOpen': 0.9,
-      'eyeWideLeft': 0.8,
-      'eyeWideRight': 0.8,
-      'browRaiseInner': 0.8,
-      'browRaiseOuter': 0.6,
-      'browRaiseLeft': 0.7,
-      'browRaiseRight': 0.7,
-      'mouthOOpen': 0.7
+      'Mouth_Open': 0.6,
+      'Eye_Wide_L': 0.8,
+      'Eye_Wide_R': 0.8,
+      'Brow_Raise_Inner_Left': 0.7,
+      'Brow_Raise_Inner_Right': 0.7,
+      'Brow_Raise_Outer_Left': 0.6,
+      'Brow_Raise_Outer_Right': 0.6
     }
   },
   [EXPRESSIONS.ANGRY]: {
     description: 'Angry/upset',
     morphMods: {
-      'mouthFrown': 0.7,
-      'mouthCornerDepressLeft': 0.5,
-      'mouthCornerDepressRight': 0.5,
-      'browInnerRaise': 0.0,
-      'browDownLeft': 0.8,
-      'browDownRight': 0.8,
-      'eyeNarrowLeft': 0.6,
-      'eyeNarrowRight': 0.6,
-      'noseWrinkle': 0.4
+      'Mouth_Frown_L': 0.6,
+      'Mouth_Frown_R': 0.6,
+      'Brow_Drop_Left': 0.8,
+      'Brow_Drop_Right': 0.8,
+      'Eye_Squint_L': 0.5,
+      'Eye_Squint_R': 0.5,
+      'Nose_Scrunch': 0.4
     }
   },
   [EXPRESSIONS.CONFUSED]: {
     description: 'Confused/uncertain',
     morphMods: {
-      'browRaiseLeft': 0.7,
-      'browDownRight': 0.7,
-      'mouthFrown': 0.3,
-      'mouthShrugLower': 0.5,
-      'eyeNarrowLeft': 0.3,
-      'eyeNarrowRight': 0.3,
-      'noseWrinkle': 0.3
+      'Brow_Raise_Left': 0.7,
+      'Brow_Drop_Right': 0.6,
+      'Mouth_Frown_L': 0.2,
+      'Mouth_Frown_R': 0.2,
+      'A36_Mouth_Shrug_Lower': 0.5,
+      'Eye_Squint_L': 0.3,
+      'Eye_Squint_R': 0.3,
+      'Nose_Scrunch': 0.2
     }
   }
 }
@@ -1503,22 +1491,14 @@ function applyExpressionMods(meshName, morphState, mods, blendAmount) {
   const meshData = mouthMorphTargets[meshName]
   if (!meshData) return
   
-  // Try to find target indices by name
   Object.entries(mods).forEach(([targetName, intensity]) => {
-    let targetIndex = -1
-    
-    // Try to find the morph target by name
-    if (meshData.targetNames && meshData.targetNames.length > 0) {
-      targetIndex = meshData.targetNames.findIndex(name => 
-        name.toLowerCase().includes(targetName.toLowerCase())
-      )
-    }
-    
-    // If not found by name, try the dictionary
-    if (targetIndex === -1 && meshData.mesh.morphTargetDictionary) {
-      targetIndex = meshData.mesh.morphTargetDictionary[targetName] !== undefined 
-        ? meshData.mesh.morphTargetDictionary[targetName]
-        : -1
+    // Exact name first, so e.g. "Eye_Wide_L" doesn't land on "A18_Eye_Wide_Left"
+    let targetIndex = meshData.mesh.morphTargetDictionary?.[targetName] ?? -1
+
+    // Fall back to a case-insensitive exact match
+    if (targetIndex === -1 && meshData.targetNames?.length) {
+      const wanted = targetName.toLowerCase()
+      targetIndex = meshData.targetNames.findIndex(name => name.toLowerCase() === wanted)
     }
     
     // Apply the modification
@@ -1590,23 +1570,9 @@ function updateLipSync() {
     // Use the master mouth animation system to coordinate
     // jaw, lips, and teeth movement together
     // This handles all morphTarget updates internally (jaw, lips, teeth)
+    // Expressions come only from the animation timeline (syncExpression),
+    // so lip sync doesn't change them here
     updateMouthFromAudio(audioIntensity, midFreq, highFreq)
-    
-    // Blend expression based on audio intensity
-    // Higher frequencies = more expressive
-    const expressionIntensity = highFreq
-    
-    // Dynamically adjust expression based on audio characteristics
-    // High intensity peaks could trigger laugh expression
-    if (expressionIntensity > 0.6) {
-      if (currentExpression !== EXPRESSIONS.LAUGH && targetExpression !== EXPRESSIONS.LAUGH) {
-        setExpression(EXPRESSIONS.LAUGH)
-      }
-    } else if (expressionIntensity > 0.3) {
-      if (currentExpression !== EXPRESSIONS.SMILE && targetExpression !== EXPRESSIONS.SMILE) {
-        setExpression(EXPRESSIONS.SMILE)
-      }
-    }
   } catch (error) {
     console.warn('Error updating lip-sync:', error)
   }

@@ -2,6 +2,14 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
+
+  // Strip the very chatty console.log calls from production builds;
+  // console.warn and console.error are kept
+  vite: {
+    esbuild: {
+      pure: process.env.NODE_ENV === 'production' ? ['console.log'] : []
+    }
+  },
   
   modules: [
     '@nuxtjs/color-mode',

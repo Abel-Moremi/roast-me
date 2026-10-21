@@ -8,7 +8,7 @@ from flask import jsonify
 from google import genai
 import logging
 
-from config import GEMINI_API_KEY, get_cors_headers
+from config import GEMINI_API_KEY, MAX_IMAGE_DIMENSION, get_cors_headers
 from utils.image_utils import parse_image_from_request, resize_image, image_to_bytes
 from services.roast_service import generate_roast, build_narration_text
 from services.tts_service import generate_tts_audio, get_audio_duration, get_audio_mime_type
@@ -64,7 +64,7 @@ def roast_me(request):
             )
 
         # Process image
-        image = resize_image(image)
+        image = resize_image(image, MAX_IMAGE_DIMENSION)
         image_bytes = image_to_bytes(image)
 
         # Generate roast

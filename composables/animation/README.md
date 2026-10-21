@@ -1,284 +1,106 @@
-# Animation System Documentation
+# Animation manager
 
-## Overview
+Plays the character's baked body animations (from `public/comedian.glb`) and layers a small procedural idle sway on top. Used by `components/ComedyClubScene.vue`.
 
-The refactored animation system provides a clean, maintainable interface for managing GLTF model animations in the Roast Me application. It follows Nuxt 3 and Vue 3 Composition API best practices.
+Facial animation is not handled here: blinking, jaw and lips live in `composables/useBlinking.js`, `useJawMovement.js` and `useMouthAnimation.js`, and expressions in `ComedyClubScene.vue`. Which animation plays when is decided by `composables/useAnimationAudioSync.js`.
 
-## Architecture
+Full docs: `docs-roast-me/04 Frontend/3D Scene.md` and `docs-roast-me/05 Character & Assets/Animation Catalogue.md`.
 
-```
-composables/animation/
-├── index.js                    # Main export file
-├── useAnimationManager.js      # Core composable
-├── animationConstants.js       # Centralized constants
-├── animationUtils.js          # Helper utilities
-└── README.md                  # This file
-```
+## Files
 
-## Key Features
-
-### 1. **Clean State Management**
-- Uses Vue 3 `ref()` for reactive state
-- Computed properties for derived values
-- Type-safe state transitions
-
-### 2. **GLTF Animation Integration**
-- Automatic animation clip detection
-- Smooth fade transitions between states
-- Support for procedural overlays
-
-### 3. **Procedural Animation Layering**
-- Breathing motion (chest, 0.5Hz)
-- Head sway (head, 0.6Hz)
-- Shoulder bounce (shoulders, 0.4Hz)
-
-### 4. **Comprehensive Debugging**
-- State introspection
-- Bone cache inspection
-- Animation clip listing
-- Available states documentation
+| File | Contents |
+| --- | --- |
+| `useAnimationManager.js` | The composable: `AnimationMixer`, clip cache, bone cache, state changes, procedural sway |
+| `animationConstants.js` | `ANIMATION_STATES` (state → clip), `BONE_MAP`, `PROCEDURAL_CONFIG`, `DEFAULT_ANIMATION_CONFIG` |
+| `animationUtils.js` | Small helpers (`getAnimationClip`, `getBone`, `isValidAnimationState`, …) |
+| `index.js` | Re-exports everything. `ComedyClubScene.vue` currently imports `useAnimationManager.js` directly. |
 
 ## Usage
 
-### Basic Setup
-
-```javascript
+```js
 import { useAnimationManager } from '@/composables/animation'
 
-const {
-  initialize,
-  setState,
-  update,
-  holdState,
-  debugState
-} = useAnimationManager()
+const { initialize, setState, holdState, unlockState, update } = useAnimationManager()
 
-// On GLTF load
-initialize(gltfObject)
+// After GLTFLoader finishes
+initialize(gltf)               // caches clips by name and bones via BONE_MAP; returns false on failure
 
-// In animation loop
-update(deltaTime, audioIntensity)
+// Every frame
+update(delta, audioIntensity)  // advances the mixer, then applies the procedural sway
 
-// State transitions
-setState('walk', 0.3)  // 0.3 second fade
+// Change animation (cross-fade, default 0.3 s)
+setState('spellcast')
+setState('relax', 0)           // no fade
 
-// Lock to specific state
-holdState('relax')
-```
-
-### Advanced Usage
-
-```javascript
-// Check state
-const current = getState()
-
-// Unlock state for transitions
+// Lock / unlock
+holdState('relax')             // setState is refused while locked
 unlockState()
-
-// Enable/disable animations
-enable()
-disable()
-
-// Debug info
-debugState()
-debugBones()
-debugAvailableStates()
 ```
 
-## Animation States
+What the scene does: after loading it plays `relax` and locks it. Every time the timeline's animation changes, it calls `unlockState()` and then `setState(name)`.
 
-All available states are defined in `animationConstants.js`:
+## States
 
-```javascript
-{
-  idle,           // Standing idle
-  walkRelaxed,    // Casual walking
-  walk,           // Walking
-  walkThink,      // Walking while thinking
-  run,            // Running/energetic
-  relax,          // Relaxing pose (default)
-  sitTalk,        // Sitting and talking
-  spellcast,      // Spellcast gesture
-  action,         // Action pose
-  default         // Default pose
-}
-```
+`ANIMATION_STATES` keys are the camelCase form of the backend's timeline names (`walk-relaxed-start` → `walkRelaxedStart`). **Every animation the backend can choose must have a key here**, or the character ignores those keyframes.
 
-## Configuration
+| State | Clip | Plays |
+| --- | --- | --- |
+| `idle` | `idle` | loop |
+| `walkRelaxedStart` | `walk-relaxed-start` | once, holds last frame |
+| `walkRelaxedLoop` | `walk-relaxed-loop` | loop |
+| `walkRelaxedEnd` | `walk-relaxed-end` | once, holds last frame |
+| `standToSit` | `stand-to-sit` | once, holds last frame |
+| `spellcast` | `spellcast` | loop |
+| `aerobicDance` | `aerobic-dance` | loop |
+| `relax` | `relax` | loop |
+| `walkThink` | `walk-think` | loop |
+| `sitTalk` | `sit-talk` | loop (seated idle, used after `standToSit`) |
+| `walkRelaxed`, `walk` | `walk-relaxed-loop` | loop (console aliases) |
+| `run` | `aerobic-dance` | loop (console alias) |
+| `action`, `default` | `Action`, `Default` | loop (console only) |
 
-### Default Configuration
+`loopOnce: true` on a state means `THREE.LoopOnce` + `clampWhenFinished`. Everything else uses `THREE.LoopRepeat`.
 
-Edit `animationConstants.js`:
+### Adding a state
+1. Make sure the clip exists in `comedian.glb` (`debugModel()` lists them).
+2. Add `{ clipName, weight, description, loopOnce? }` to `ANIMATION_STATES`.
+3. If the backend should be able to choose it, add it to `AVAILABLE_ANIMATIONS` in `functions/services/animation_constants.py` as well, and update the Animation Catalogue note.
 
-```javascript
-export const DEFAULT_ANIMATION_CONFIG = {
-  defaultState: 'relax',           // Initial state
-  transitionDuration: 0.3,         // Default fade time
-  enableProcedural: true           // Layer procedural movements
-}
-```
+## Procedural sway
 
-### Procedural Movements
+`PROCEDURAL_CONFIG` adds sine-wave motion every frame:
 
-Customize in `animationConstants.js`:
+| Movement | Bones | Speed | Range | Axis |
+| --- | --- | --- | --- | --- |
+| breathing | chest | 0.5 Hz | 0.02 rad | x |
+| headSway | head | 0.6 Hz | 0.03 rad | z |
+| shoulderBounce | shoulderL, shoulderR | 0.4 Hz | 0.02 rad | x |
 
-```javascript
-export const PROCEDURAL_CONFIG = {
-  breathing: {
-    enabled: true,
-    bones: ['chest'],
-    speed: 0.5,        // Hz
-    range: 0.02,       // Radians
-    axis: 'x'
-  },
-  // ... more movements
-}
-```
+Each sets the bone's rotation to *its rotation at load time + the sine offset*. Because it's absolute, it **replaces** whatever the playing clip does to those bones on that axis (see Known Issues in the docs vault). Turn a movement off with `enabled: false`.
 
-## Best Practices
+`BONE_MAP` maps the short names to the model's `CC_Base_*` bones. Several candidates are allowed, and the first one found wins.
 
-### 1. **Initialize Early**
-```javascript
-onMounted(async () => {
-  const gltf = await loader.load(modelPath)
-  const success = initialize(gltf)
-  if (!success) {
-    console.error('Failed to initialize animations')
-  }
-})
-```
+## API
 
-### 2. **Check Transitions**
-```javascript
-if (canTransition.value) {
-  setState('walk')
-}
-```
+| Member | Notes |
+| --- | --- |
+| `initialize(gltfOrScene)` | Accepts a GLTF result or a Scene/Group with `.animations`. Returns `boolean`. |
+| `setState(state, fade = 0.3)` | `false` if the state is unknown, locked, or the clip is missing |
+| `getState()` | Current state name (string) |
+| `holdState(state)` / `unlockState()` | Lock / unlock |
+| `update(delta, audioIntensity = 0)` | `audioIntensity` is stored but not used yet |
+| `enable()` / `disable()` | Pause or resume all updates |
+| `currentState`, `targetState`, `isEnabled`, `isStateLocked` | refs |
+| `canTransition`, `animationCount`, `boneCount` | computed |
+| `debugState()`, `debugBones()`, `debugModel()`, `debugAvailableStates()` | Console output. Also on `window` as `debugAnim*` (dev builds print; production strips `console.log`). |
 
-### 3. **Lock for Constant State**
-```javascript
-// Ensure character stays in relax
-setState('relax', 0)
-holdState('relax')
-```
-
-### 4. **Graceful Degradation**
-```javascript
-// Handle missing animations
-try {
-  const success = setState('walk')
-  if (!success) {
-    setState('idle')  // Fallback
-  }
-} catch (error) {
-  console.error('Animation error:', error)
-}
-```
-
-## API Reference
-
-### State Methods
-
-#### `initialize(input: THREE.Scene | Object): boolean`
-Initialize the animation manager with model data.
-
-#### `setState(state: string, speed?: number): boolean`
-Transition to a new animation state.
-
-#### `getState(): string`
-Get the current animation state.
-
-#### `holdState(state: string): void`
-Lock to a specific state, blocking transitions.
-
-#### `unlockState(): void`
-Allow state transitions again.
-
-### Control Methods
-
-#### `update(delta: number, audioIntensity?: number): void`
-Update animations (call every frame).
-
-#### `enable(): void`
-Enable animation updates.
-
-#### `disable(): void`
-Disable animation updates.
-
-### Debug Methods
-
-#### `debugState(): void`
-Print current manager state to console.
-
-#### `debugBones(): void`
-Print cached bones to console.
-
-#### `debugModel(): void`
-Print loaded model animations to console.
-
-#### `debugAvailableStates(): void`
-Print all available states to console.
-
-## Performance Considerations
-
-1. **Bone Caching** - Bones are cached on init for O(1) access
-2. **Animation Clips** - Stored by name for quick lookup
-3. **Computed Properties** - Use Vue's reactivity system efficiently
-4. **Procedural Updates** - Applied only when enabled
-5. **Mixer Updates** - Single mixer handles all clips
+`DEFAULT_ANIMATION_CONFIG.enableProcedural` exists but isn't read. Use `PROCEDURAL_CONFIG.*.enabled` instead.
 
 ## Troubleshooting
 
-### Animations Not Playing
-1. Check: `debugModel()` - Are clips loaded?
-2. Check: `debugState()` - Is mixer initialized?
-3. Check: `debugAvailableStates()` - Is state valid?
-
-### State Transitions Not Working
-1. Check: `isStateLocked.value` - Is state locked?
-2. Check: `canTransition` computed property
-3. Call: `unlockState()` to allow transitions
-
-### Procedural Movements Not Showing
-1. Check: `PROCEDURAL_CONFIG.breathing.enabled` etc.
-2. Verify bones are cached: `debugBones()`
-3. Ensure `enable()` is called
-
-## Migration from Old System
-
-Old system files still exist for reference:
-- `composables/useAnimationManager.js` (legacy)
-- `composables/useProceduralAnimations.js` (legacy)
-
-New system locations:
-- `composables/animation/useAnimationManager.js` ✓
-- `composables/animation/animationConstants.js` ✓
-- `composables/animation/animationUtils.js` ✓
-
-Update imports in components:
-```javascript
-// Old
-import { useAnimationManager } from '@/composables/useAnimationManager'
-
-// New
-import { useAnimationManager } from '@/composables/animation'
-```
-
-## Contributing
-
-When modifying the animation system:
-
-1. **Update constants** in `animationConstants.js`
-2. **Add utilities** in `animationUtils.js`
-3. **Keep logic** in `useAnimationManager.js`
-4. **Document changes** in this README
-5. **Test thoroughly** with `debugState()` and console output
-
-## Future Enhancements
-
-- [ ] Animation blending for smooth transitions
-- [ ] Animation events (onStart, onComplete)
-- [ ] Audio-reactive procedural movements
-- [ ] Animation presets/profiles
-- [ ] Performance metrics collection
-- [ ] Automated testing suite
+| Symptom | Check |
+| --- | --- |
+| `Unknown state "xyz"` in the console | The state is missing from `ANIMATION_STATES`. Usually a new backend animation name. |
+| `Clip not found "xyz"` | `clipName` doesn't match a clip in the model. Run `debugModel()`. |
+| `State is locked, transition blocked` | Something called `holdState`. Call `unlockState()` first. |
+| Sway not visible | `debugBones()`: were the bones found? |

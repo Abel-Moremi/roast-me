@@ -11,6 +11,7 @@
         :sceneProgress="sceneProgress"
         :characterProgress="characterProgress"
         :animationProgress="animationProgress"
+        :error="loadError"
         @loadingComplete="handleLoadingComplete"
       />
 
@@ -27,9 +28,9 @@
           :getAudioFrequencyData="getAudioFrequencyData"
           :syncAnimation="syncAnimation"
           :syncExpression="syncExpression"
-          :syncIntensity="syncIntensity"
           @sceneReady="handleSceneReady"
           @characterLoadProgress="handleCharacterLoadProgress"
+          @characterLoadError="handleCharacterLoadError"
           @roastFrameClicked="showRoastModal = true"
           @photoClicked="showPhotoModal = true"
         />
@@ -50,6 +51,13 @@
       <div v-if="roastError" class="fixed top-8 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
         <div class="bg-black/90 border border-red-900/70 rounded-lg px-4 py-3 text-red-400 text-sm shadow-2xl">
           {{ roastError }}
+        </div>
+      </div>
+
+      <!-- Notice when the roast shown is the bundled sample -->
+      <div v-if="roastNotice && roastData" class="fixed top-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+        <div class="bg-black/80 border border-yellow-700/70 rounded-lg px-4 py-2 text-yellow-300 text-xs shadow-2xl">
+          {{ roastNotice }}
         </div>
       </div>
       
@@ -210,6 +218,7 @@ import { useLoadingState } from '@/composables/useLoadingState'
 // Initialize loading state manager
 const {
   isLoading: isSceneLoading,
+  loadError,
   sceneLoaded,
   characterLoaded,
   animationsLoaded,
@@ -223,7 +232,8 @@ const {
   completeCharacterLoading,
   startAnimationSetup,
   completeAnimationSetup,
-  completeLoading
+  completeLoading,
+  failLoading
 } = useLoadingState()
 
 // Scene setup, the character GLTF fetch, and animation-manager init all begin
@@ -240,6 +250,11 @@ const audioLoading = ref(false)
 const isPlaying = ref(false)
 const audioError = ref(null)
 const roastError = ref(null)
+const roastNotice = ref(null) // shown when a sample (mock) roast is used
+
+// Increments on every roast request and on reset, so responses that arrive
+// after the user has moved on are ignored
+let roastRequestId = 0
 const showRoastModal = ref(false)
 const showPhotoModal = ref(false)
 const currentTime = ref(0)
@@ -252,8 +267,7 @@ const {
   setPlaying: setSyncPlaying,
   seek: syncSeek,
   currentAnimation: syncAnimation,
-  currentExpression: syncExpression,
-  currentIntensity: syncIntensity
+  currentExpression: syncExpression
 } = useAnimationAudioSync()
 
 let audioContext = null
@@ -312,6 +326,13 @@ function handleCharacterLoadProgress(percent) {
 }
 
 /**
+ * Called when the character model can't be downloaded or parsed
+ */
+function handleCharacterLoadError() {
+  failLoading("Couldn't load the 3D comedian. Check your connection and reload.")
+}
+
+/**
  * Called when loading screen animation completes
  */
 function handleLoadingComplete() {
@@ -331,13 +352,23 @@ async function handleImageCaptured(base64Image) {
  * the result. Shared by the first capture and "Roast Again".
  */
 async function fetchRoast() {
+  const requestId = ++roastRequestId
   isAnalyzing.value = true
   roastError.value = null
+  roastNotice.value = null
 
-  const data = await requestRoast(capturedImage.value)
+  const { data, source, reason } = await requestRoast(capturedImage.value)
+
+  // Reset (or a newer request) happened while we were waiting: drop this one
+  if (requestId !== roastRequestId) return
 
   if (data?.success && data.data) {
-    handleRoastReceived(data)
+    if (source === 'mock') {
+      roastNotice.value = reason === 'api-failed'
+        ? "The roast service is unavailable right now, so here's a sample roast."
+        : 'Demo mode: this is a sample roast (no roast API configured).'
+    }
+    handleRoastReceived(data, requestId)
     return
   }
 
@@ -350,7 +381,7 @@ async function fetchRoast() {
   capturedImage.value = null
 }
 
-function handleRoastReceived(data) {
+function handleRoastReceived(data, requestId = roastRequestId) {
   console.log('🎬 handleRoastReceived called')
   console.log('🎬 data type:', typeof data)
   console.log('🎬 data is null?', data === null)
@@ -380,6 +411,8 @@ function handleRoastReceived(data) {
   
   // 1.5 second delay for comedic timing
   setTimeout(() => {
+    // Ignore if the user reset or re-roasted during the comic-timing pause
+    if (requestId !== roastRequestId) return
     console.log('🎬 Inside setTimeout - initializing sync')
     roastData.value = data
     // Keep analyzing state while decoding audio
@@ -892,6 +925,10 @@ async function resumeAudio() {
 }
 
 function reset() {
+  roastRequestId++
+  roastNotice.value = null
+  roastError.value = null
+
   // Clean up audio source
   if (audioSource) {
     try {

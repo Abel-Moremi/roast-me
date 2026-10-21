@@ -19,7 +19,6 @@ export const useAnimationAudioSync = () => {
   const SEATED_IDLE_ANIMATION = 'sitTalk'
   const DEFAULT_EXPRESSION = 'neutral'
   const DEFAULT_INTENSITY = 0.5
-  const TRANSITION_THRESHOLD = 0.95 // Trigger transition at 95% through frame
   const DEBUG_MODE = false // Toggle for detailed logging
 
   // ====== State: Animation Script ======
@@ -215,7 +214,6 @@ export const useAnimationAudioSync = () => {
    * - Find current timeline frame
    * - Update animation state
    * - Track frame progress
-   * - Signal when to transition animations
    * 
    * @param {number} audioTime - Current audio time in seconds
    * @returns {Object|null} Sync state with animation/expression info, or null if no timeline
@@ -255,7 +253,6 @@ export const useAnimationAudioSync = () => {
 
     // Calculate progress within frame
     const frameProgress = calculateFrameProgress(current, audioTime)
-    const shouldTransition = frameProgress > TRANSITION_THRESHOLD && next
 
     log('[update]', `Time: ${audioTime.toFixed(2)}s | Animation: ${normalizedAnimation} | Progress: ${frameProgress.toFixed(2)}`)
 
@@ -265,7 +262,6 @@ export const useAnimationAudioSync = () => {
       intensity: currentIntensity.value,
       frameProgress,
       notes: current.notes,
-      shouldTransition,
       currentFrame: current,
       nextFrame: next
     }

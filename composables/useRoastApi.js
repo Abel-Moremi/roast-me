@@ -5,7 +5,8 @@ import { useMockRoast } from '@/composables/useMockRoast'
  *
  * Falls back to the bundled mock response (public/mock/output.txt) when the
  * API URL isn't configured or the request fails, so the app still works in
- * local development.
+ * local development. The result says which one was used so the UI can tell
+ * the user they're seeing a sample roast.
  */
 export const useRoastApi = () => {
   const { loadMockData } = useMockRoast()
@@ -19,11 +20,12 @@ export const useRoastApi = () => {
 
   /**
    * @param {string} base64Image - Data URL of the captured photo
-   * @returns {Promise<Object|null>} Roast response, or null if both the API
-   *   and the mock data failed
+   * @returns {Promise<{ data: Object|null, source: 'api'|'mock', reason?: 'not-configured'|'api-failed' }>}
+   *   `data` is null only if both the API and the mock data failed
    */
   const requestRoast = async (base64Image) => {
     const apiUrl = getApiUrl()
+    let reason = 'not-configured'
 
     if (apiUrl) {
       try {
@@ -33,19 +35,24 @@ export const useRoastApi = () => {
           body: JSON.stringify({ image: base64Image })
         })
 
-        if (!response.ok) {
+        // 4xx responses carry a message meant for the user (bad image,
+        // blocked by safety filters), so pass them through rather than
+        // covering them up with the mock roast. Only 5xx falls back.
+        const isClientError = response.status >= 400 && response.status < 500
+        if (!response.ok && !isClientError) {
           throw new Error(`API error: ${response.status}`)
         }
 
-        return await response.json()
+        return { data: await response.json(), source: 'api' }
       } catch (error) {
         console.error('Roast API request failed, falling back to mock data:', error)
+        reason = 'api-failed'
       }
     } else {
       console.log('No API URL configured, using mock data')
     }
 
-    return await loadMockData()
+    return { data: await loadMockData(), source: 'mock', reason }
   }
 
   return { requestRoast }

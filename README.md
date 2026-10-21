@@ -1,612 +1,158 @@
-# 🎤 Roast-Me: AI-Powered Comedy Experience
+# 🎤 Roast Me
 
-Get roasted by an AI comedian with synchronized 3D animations and realistic audio. **Roast-Me** is an interactive web application that captures your photo, analyzes it with Google Gemini AI, generates a witty roast, animates a 3D character delivering the roast with synchronized audio playback, and creates comedic facial expressions and body movements.
+Take a selfie and get roasted by a 3D stand-up comedian. Google Gemini writes the roast from your photo and voices it, then plans the comedian's gestures and expressions. The comedian performs it on a comedy club stage, lip-syncing to the audio.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)
+![Node.js](https://img.shields.io/badge/Node.js-20%2B-green)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-
----
-
-## 📋 Table of Contents
-
-- [Overview](#overview)
-- [Demo](#demo)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Development](#development)
-- [Deployment](#deployment)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
-
----
-
-## 📱 Overview
-
-Roast-Me combines cutting-edge AI technology with 3D animations to create a unique, hilarious user experience. The application uses:
-
-- **Google Gemini API** to analyze photos and generate personalized, comedic roasts
-- **Google Gemini TTS** for natural-sounding audio narration
-- **Three.js** for a 3D animated character with facial expressions and body movements
-- **Nuxt 4** for a modern, responsive web interface
-- **Google Cloud Functions** for serverless backend processing
-
-The entire pipeline is seamless: capture a photo → AI analysis → roast generation → audio synthesis → synchronized 3D animation → comedic delivery.
-
----
 
 ## 🎥 Demo
 
-Watch Roast-Me in action:
-
 [![Watch the demo](https://img.youtube.com/vi/Cd-LDGmjxfI/0.jpg)](https://youtu.be/Cd-LDGmjxfI)
 
-**[View Full Demo on YouTube](https://youtu.be/Cd-LDGmjxfI)**
+**[View the full demo on YouTube](https://youtu.be/Cd-LDGmjxfI)**
 
----
+## How it works
 
-## ✨ Features
+1. The browser captures a webcam photo and POSTs it to a Google Cloud Function.
+2. The function makes three Gemini calls in a row:
+   - **Roast:** `gemini-3-flash-preview` looks at the photo and returns structured JSON (vibe, 8–12 roast lines, a one-liner, a confidence rating, style tags).
+   - **Voice:** `gemini-2.5-flash-preview-tts` performs the roast as raw 24 kHz PCM audio.
+   - **Performance:** Gemini plans a timeline of body animations and facial expressions for the exact audio length. A rule checker validates it, and a built-in default is used if it fails.
+3. The frontend plays the audio with the Web Audio API. The comedian ([Three.js](https://threejs.org/)) follows the timeline, lip-syncs from live audio frequency analysis, blinks, and sways.
 
-### Core Features
-- **📸 Camera Capture**: Real-time camera access to capture user photos directly in the browser
-- **🤖 AI Roast Generation**: Google Gemini API analyzes images and generates hilarious, personalized roasts
-- **🔊 Text-to-Speech Audio**: Gemini TTS converts roasts to natural-sounding audio with emotion
-- **🎬 3D Character Animation**: Three.js-powered 3D character with:
-  - Synchronized mouth movements to audio
-  - Animated facial expressions (smirks, raised eyebrows, etc.)
-  - Body movements and comedic gestures
-  - Blinking eyes for realism
-- **🎵 Audio-Visual Synchronization**: Perfectly timed animations that match audio playback
-- **🌓 Dark/Light Mode**: System preference detection with manual override
-- **📱 Responsive Design**: Optimized for desktop and tablet devices
-- **🎯 Mock Mode**: Development mode with pre-recorded roast data for testing without API calls
-- **⚡ Performance Optimized**: Efficient animation rendering and audio processing
+If the API is unreachable, the app plays a bundled sample roast and says so on screen.
 
-### Advanced Features
-- **State Machine Animation**: Consistent character behavior based on animation states
-- **Frequency-Based Audio Analysis**: Real-time audio frequency analysis for dynamic mouth movements
-- **Procedural Body Movements**: Computerized arm and body gestures matching speech patterns
-- **Fallback Animations**: Graceful degradation if audio generation fails
-- **CORS-Enabled**: Secure cross-origin requests with proper headers
+## Tech stack
 
----
+| Part | Tech |
+| --- | --- |
+| Frontend | Nuxt 4 (static build), Vue 3, Three.js 0.182, Tailwind CSS |
+| Backend | Python 3.10 Cloud Function (gen 2), `functions-framework`, `google-genai`, Pillow |
+| AI | Gemini vision + Gemini TTS |
+| Hosting | Firebase Hosting (frontend), Google Cloud Functions (backend) |
+| CI/CD | GitHub Actions, one workflow per side |
 
-## 💻 Tech Stack
+## Quick start
 
-### Frontend
-- **Nuxt 4.2.2** - Full-stack Vue framework
-- **Vue 3.5.26** - Progressive JavaScript framework
-- **Three.js 0.182.0** - 3D graphics library
-- **Tailwind CSS 6.14.0** - Utility-first CSS framework
-- **TypeScript** - Type-safe JavaScript
-- **Color Mode Module** - Dark/light mode support
-
-### Backend
-- **Python 3.10+** - Backend runtime
-- **Flask 3.1.2** - Web framework (via Cloud Functions framework)
-- **Google Cloud Functions** - Serverless computing
-- **Google Generative AI SDK** (`google-genai 1.58.0`) - Gemini API integration
-- **Google Cloud Firestore** - Optional data storage
-
-### APIs
-- **Google Gemini 3 Pro Vision** - Image analysis and roast generation
-- **Google Gemini 2.5 Flash TTS** - Text-to-speech audio generation
-- **Google Gemini API** - Core LLM capabilities
-
-### DevOps
-- **Firebase Hosting** - Frontend deployment
-- **Google Cloud Functions** - Backend deployment
-- **GitHub Actions** - CI/CD workflows
-
----
-
-## 📁 Project Structure
-
-```
-roast-me/
-├── app.vue                          # Main Nuxt app component
-├── nuxt.config.ts                   # Nuxt configuration
-├── tailwind.config.js               # Tailwind CSS config
-├── tsconfig.json                    # TypeScript configuration
-│
-├── assets/
-│   └── css/
-│       └── tailwind.css             # Global styles
-│
-├── components/
-│   ├── CameraCapture.vue            # Camera input component
-│   ├── ComedyClubScene.vue          # Main scene layout
-│   ├── LoadingScreen.vue            # Loading indicator
-│   └── ThreeScene.vue               # Three.js 3D rendering
-│
-├── composables/                     # Vue 3 composables (reusable logic)
-│   ├── useAnimationManager.js       # Animation state management
-│   ├── useAnimationAudioSync.js     # Audio/animation synchronization
-│   ├── useBlinking.js               # Eye blinking animation
-│   ├── useBodyRigging.js            # Body movement system
-│   ├── useFacialExpressions.js      # Facial animation controller
-│   ├── useJawMovement.js            # Mouth/jaw animation
-│   ├── useLoadingState.js           # Loading state management
-│   ├── useMockRoast.js              # Mock data loader
-│   ├── useMouthAnimation.js         # Mouth movement from audio
-│   ├── useProceduralAnimations.js   # Procedural gesture generation
-│   ├── useThree.js                  # Three.js scene setup
-│   └── animation/                   # Animation utilities
-│       ├── animationConstants.js    # Animation metadata
-│       ├── animationUtils.js        # Helper functions
-│       └── index.js                 # Animation exports
-│
-├── functions/                       # Cloud Functions backend
-│   ├── main.py                      # Entry point HTTP function
-│   ├── config.py                    # Configuration (API keys, settings)
-│   ├── requirements.txt             # Python dependencies
-│   │
-│   ├── services/
-│   │   ├── roast_service.py         # Roast generation logic
-│   │   ├── tts_service.py           # Text-to-speech service
-│   │   ├── animation_service.py     # Animation script generation
-│   │   ├── animation_prompt.py      # Prompt building
-│   │   ├── animation_validator.py   # Animation validation
-│   │   ├── animation_constants.py   # Animation metadata
-│   │   └── animation_utils.py       # Animation utilities
-│   │
-│   └── utils/
-│       ├── image_utils.py           # Image processing (resize, encode, etc.)
-│       └── decode_audio.py          # Audio base64 decoding
-│
-├── utils/
-│   ├── animationUtils.js            # Frontend animation utilities
-│   ├── sceneConstants.js            # Three.js scene constants
-│   └── sceneCreation.js             # Three.js scene factory
-│
-├── public/
-│   ├── robots.txt                   # SEO robots file
-│   └── mock/
-│       ├── input.txt                # Mock request data
-│       └── output.txt               # Mock roast response
-│
-├── mock/
-│   └── output.txt                   # Alternative mock data location
-│
-├── .env                             # Environment variables (local)
-├── firebase.json                    # Firebase hosting config
-├── .firebaserc                      # Firebase project settings
-└── .github/
-    └── workflows/                   # CI/CD workflows
-        ├── deploy-firebase.yml      # Frontend deployment
-        └── deploy-cloud-function.yml # Backend deployment
-```
-
----
-
-## 📦 Prerequisites
-
-### Global Requirements
-- **Node.js 18+** - Frontend build and dev server
-- **npm 9+** - Package manager
-- **Python 3.10+** - Backend runtime
-- **Google Cloud Account** - For API keys and deployment
-- **Firebase Account** - For hosting (optional, but recommended)
-
-### Google Cloud Setup
-1. Create a Google Cloud Project
-2. Enable the following APIs:
-   - Google Generative AI API
-   - Cloud Functions API
-   - Cloud Build API (for deployment)
-3. Create API credentials (API Key)
-4. Set up Firebase project for hosting
-
----
-
-## 🚀 Installation
-
-### Step 1: Clone the Repository
+### Frontend only (sample roast, no API key needed)
 
 ```bash
 git clone https://github.com/Abel-Moremi/roast-me.git
 cd roast-me
-```
-
-### Step 2: Install Frontend Dependencies
-
-```bash
 npm install
+npm run dev            # http://localhost:3000
 ```
 
-### Step 3: Set Up Backend Environment
+With no API URL set, every capture plays the sample roast in `public/mock/output.txt`.
+
+### Frontend + local backend
 
 ```bash
+# Terminal 1: backend
 cd functions
+python -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cd ..
+export GEMINI_API_KEY=your-key    # PowerShell: $env:GEMINI_API_KEY="your-key"
+functions-framework --target roast_me --port 8080
 ```
-
-### Step 4: Configure Environment Variables
-
-Create a `.env` file in the root directory:
-
-```env
-# Google Gemini API Key (required)
-GEMINI_API_KEY=your-gemini-api-key-here
-
-# Backend API URL (for development, use mock if not set)
-ROAST_API_URL=https://your-cloud-function-url.cloudfunctions.net/roast_me
-
-# Enable audio test mode (saves audio files locally for testing)
-ENABLE_AUDIO_TEST=false
-```
-
-> **⚠️ Important**: Never commit `.env` to version control. Add it to `.gitignore`.
-
----
-
-## ⚙️ Configuration
-
-### Frontend Configuration (nuxt.config.ts)
-
-```typescript
-export default defineNuxtConfig({
-  compatibilityDate: '2025-07-15',
-  devtools: { enabled: true },
-  modules: [
-    '@nuxtjs/color-mode',
-    '@nuxtjs/tailwindcss'
-  ],
-  // Color mode settings for dark/light theme
-  colorMode: {
-    preference: 'system',
-    fallback: 'light',
-    storage: 'localStorage'
-  }
-})
-```
-
-### Backend Configuration (functions/config.py)
-
-Key configuration variables:
-
-```python
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")          # API Key
-VISION_MODEL = "gemini-3-pro-preview"                      # Image analysis model
-TTS_MODEL = "gemini-2.5-flash-preview-tts"                 # Text-to-speech model
-TTS_VOICE = "Algenib"                                       # Voice character
-TTS_SAMPLE_RATE = 24000                                     # Audio sample rate
-ROAST_TEMPERATURE = 0.8                                     # Creativity level
-ROAST_MAX_TOKENS = 2000                                     # Max response length
-ENABLE_AUDIO_TEST = os.environ.get("ENABLE_AUDIO_TEST", "").lower() == "true"
-```
-
-### Mock Mode for Development
-
-The application includes a **mock mode** for development without API calls:
-
-1. Set `ROAST_API_URL` to a non-existent endpoint or use the default `/mock/output.txt`
-2. Or set `ENABLE_AUDIO_TEST=true` to load mock data
-3. The app will load pre-recorded roast data from `public/mock/output.txt`
-
----
-
-## 🎮 Usage
-
-### Development Mode
-
-Start the development server:
 
 ```bash
+# Terminal 2: frontend. Point it at the local backend, then start it
+echo "VITE_ROAST_API_URL=http://localhost:8080" > .env
 npm run dev
 ```
 
-Access the application at `http://localhost:3000`
+The backend reads its settings from environment variables only (no `.env` file). The frontend's `VITE_ROAST_API_URL` is baked in at build time.
 
-**Development Features**:
-- Hot module reloading for instant updates
-- Debug logging in browser console
-- Mock data fallback if API fails
-- Devtools enabled for debugging
-
-### Production Mode
-
-Build for production:
+Check the backend on its own:
 
 ```bash
-npm run build
-npm run preview
+curl -X POST http://localhost:8080 -H "Content-Type: application/json" -d @public/mock/input.txt
 ```
 
-Generate static site:
+## Configuration
 
-```bash
-npm run generate
+| Variable | Where | Required | Purpose |
+| --- | --- | --- | --- |
+| `GEMINI_API_KEY` | backend | yes | Gemini API key |
+| `ALLOWED_ORIGINS` | backend | no | Comma-separated CORS origins. Defaults to `*`. |
+| `ENABLE_AUDIO_TEST` | backend | no | `true` saves each generated clip to `functions/temp/` as base64 and WAV |
+| `VITE_ROAST_API_URL` | frontend build | no | Cloud Function URL. Unset means sample roast only. |
+
+Models, voice, prompt and limits are set in [`functions/config.py`](functions/config.py).
+
+## Project structure
+
+```
+app.vue                  App shell: state, API call, audio playback, overlays
+components/
+  CameraCapture.vue      Webcam preview + capture
+  ComedyClubScene.vue    Three.js club, character, facial expressions
+  LoadingScreen.vue      Loader shown until the 3D model is ready
+composables/
+  useRoastApi.js         Send photo to API, fall back to sample roast
+  useAnimationAudioSync.js  Audio time -> current animation/expression
+  useBlinking.js, useJawMovement.js, useMouthAnimation.js  Face animation
+  useLoadingState.js, useMockRoast.js
+  animation/             Body animation manager (clips, bones, idle sway)
+functions/               Python Cloud Function: the whole backend
+  main.py                HTTP entry point
+  config.py              Models, prompt, schema, CORS
+  services/              Roast, TTS and animation-timeline generation
+  utils/                 Image handling, PCM-to-WAV helper
+public/comedian.glb      The 3D character (~29 MB)
+public/mock/             Sample API response + sample request body
+docs-roast-me/           Full documentation (Obsidian vault)
 ```
 
-### Using the Application
+## Documentation
 
-1. **Grant Permissions**: Allow camera access when prompted
-2. **Capture Photo**: Click the camera button to take a selfie
-3. **Wait for Processing**: The app sends your photo to the AI backend
-4. **Enjoy the Roast**: Watch the 3D character deliver a hilarious roast with synchronized audio
+Everything in depth lives in [`docs-roast-me/`](docs-roast-me/), an [Obsidian](https://obsidian.md/) vault of plain Markdown files. Start at [`00 Home.md`](docs-roast-me/00%20Home.md). Useful entry points:
 
-### API Endpoint
+- [System Overview](docs-roast-me/02%20Architecture/System%20Overview.md) and [Request Lifecycle](docs-roast-me/02%20Architecture/Request%20Lifecycle.md)
+- [API Contract](docs-roast-me/02%20Architecture/API%20Contract.md): request and response format, errors
+- [Animation Catalogue](docs-roast-me/05%20Character%20&%20Assets/Animation%20Catalogue.md): read this before adding or renaming an animation
+- [Local Setup](docs-roast-me/06%20Development/Local%20Setup.md), [Deployment](docs-roast-me/07%20Operations/Deployment.md), [Known Issues](docs-roast-me/Known%20Issues.md)
 
-**Endpoint**: `POST /roast_me` (Cloud Function)
+## Deployment
 
-**Request**:
-```json
-{
-  "image": "data:image/jpeg;base64,..."
-}
-```
+Pushing to `main` deploys automatically:
 
-**Response**:
-```json
-{
-  "success": true,
-  "roast": "Your roast text here...",
-  "audio": "base64-encoded-audio",
-  "audioMimeType": "audio/L16;codec=pcm;rate=24000",
-  "animationScript": {
-    "metadata": {...},
-    "timeline": [...]
-  }
-}
-```
+| Workflow | Triggers on | Does |
+| --- | --- | --- |
+| `deploy-cloud-function.yml` | `functions/**` | `gcloud functions deploy roast_me` (gen 2, Python 3.10, `us-central1`, 2 GB, 540 s timeout) |
+| `deploy-firebase.yml` | frontend files (`app.vue`, `components/`, `composables/`, `public/`, config) | `npm run generate` → Firebase Hosting |
 
----
+Required GitHub secrets: `GCP_SA_KEY` (service-account JSON), `GEMINI_API_KEY`, and `ROAST_API_URL` (the function URL, passed to the build as `VITE_ROAST_API_URL`). Details: [Deployment](docs-roast-me/07%20Operations/Deployment.md).
 
-## 🛠️ Development
+> ⚠️ The function has no authentication or rate limiting, and every roast makes three paid Gemini calls. See [Cost & Limits](docs-roast-me/07%20Operations/Cost%20&%20Limits.md) before sharing the URL widely.
 
-### Adding New Animations
+## Troubleshooting
 
-Edit `composables/animation/animationConstants.js`:
+| Symptom | Likely cause |
+| --- | --- |
+| The same roast every time, with a yellow "sample roast" notice | `ROAST_API_URL` secret missing at build time, or the function is down or returning 5xx. Check the function logs: `gcloud functions logs read roast_me --region us-central1`. |
+| "Roast failed: …" banner | The API rejected the photo (unreadable image, or Gemini's safety filters). The message says which. |
+| Camera doesn't start | The page must be on HTTPS or `localhost`, and camera permission must be granted. |
+| Loader says "The comedian missed his cue" | `comedian.glb` failed to download. Check the network tab and reload. |
+| No Play button after a roast | Text-to-speech failed. The roast is still shown, so check the function logs. |
+| `Server is not configured` (500) | `GEMINI_API_KEY` isn't set for the function. |
 
-```javascript
-export const FACIAL_EXPRESSIONS = {
-  smirk: { leftSmile: 0.6, rightSmile: 0.5, leftEyebrow: 0.4 },
-  laugh: { mouth: 1.0, leftEye: 0.3, rightEye: 0.3 }
-}
-```
+The browser console has debug helpers such as `setAnimationState('spellcast')` and `debugMouth()` in dev builds. See [3D Scene](docs-roast-me/04%20Frontend/3D%20Scene.md).
 
-### Modifying the 3D Character
+## Contributing
 
-Edit `components/ThreeScene.vue` to change:
-- Model geometry and materials
-- Lighting setup
-- Camera position
-- Animation parameters
+1. Fork, then branch (`git checkout -b feature/your-change`).
+2. Keep the docs vault in sync with what you change. If code and docs disagree, the code wins and the note gets fixed.
+3. Open a pull request.
 
-### Extending the Backend
+Style: Vue Composition API with `<script setup>`, Tailwind for styling, PEP 8 for Python. There's no automated test suite yet; [Testing](docs-roast-me/06%20Development/Testing.md) describes the manual checks.
 
-Add new services in `functions/services/`:
+## License
 
-```python
-# functions/services/my_service.py
-def my_function(input_data):
-    # Your logic here
-    return output
-```
-
-Then import and use in `functions/main.py`.
-
-### Testing
-
-**Frontend**:
-```bash
-npm run build  # Check for build errors
-```
-
-**Backend**:
-```bash
-cd functions
-python -m pytest tests/  # If tests exist
-python main.py          # Local testing (requires functions-framework)
-```
-
-**Mock Data Testing**:
-Open `test-audio.html` in a browser to test audio playback with mock data.
-
----
-
-## 🚢 Deployment
-
-### Deploy Frontend to Firebase
-
-1. **Install Firebase CLI**:
-   ```bash
-   npm install -g firebase-tools
-   ```
-
-2. **Initialize Firebase**:
-   ```bash
-   firebase init hosting
-   ```
-
-3. **Deploy**:
-   ```bash
-   npm run build
-   firebase deploy --only hosting
-   ```
-
-### Deploy Backend to Google Cloud Functions
-
-1. **Set Up Google Cloud CLI**:
-   ```bash
-   gcloud init
-   gcloud auth application-default login
-   ```
-
-2. **Deploy Function**:
-   ```bash
-   gcloud functions deploy roast_me \
-     --runtime python310 \
-     --trigger-http \
-     --allow-unauthenticated \
-     --entry-point roast_me \
-     --source ./functions \
-     --set-env-vars GEMINI_API_KEY=$GEMINI_API_KEY,ENABLE_AUDIO_TEST=false
-   ```
-
-3. **Get Function URL**:
-   ```bash
-   gcloud functions describe roast_me --format="value(httpsTrigger.url)"
-   ```
-
-4. **Update `.env`** with the function URL
-
-### GitHub Actions CI/CD
-
-The repository includes GitHub Actions workflows for automated deployment:
-
-- `.github/workflows/deploy-firebase.yml` - Deploys frontend
-- `.github/workflows/deploy-cloud-function.yml` - Deploys backend
-
-**Setup**:
-1. Add required secrets to GitHub repository settings (Settings → Secrets and variables → Actions):
-   - `GEMINI_API_KEY` - Your Google Gemini API key
-   - `FIREBASE_TOKEN` - From `firebase login:ci`
-   - `GCP_PROJECT_ID` - Your GCP project ID
-   - `GCP_SERVICE_ACCOUNT_JSON` - Service account JSON key
-   - `ROAST_API_URL` - **CRITICAL**: URL of your deployed Cloud Function
-     - Format: `https://[REGION]-[PROJECT-ID].cloudfunctions.net/roast_me`
-     - Get it from: `gcloud functions describe roast_me --format="value(httpsTrigger.url)"`
-
-2. Push to main branch to trigger automatic deployment
-
-> **⚠️ Important**: If `ROAST_API_URL` secret is not set, the frontend will fall back to mock data. Check GitHub Actions for warnings about missing secrets.
-
-**Verifying Deployment**:
-1. After deployment, open DevTools (F12)
-2. Go to Network tab
-3. Capture a photo - check if requests go to real API or `/mock/output.txt`
-4. If using mock, verify `ROAST_API_URL` secret is set
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-#### Issue: "Camera permission denied"
-**Solution**: 
-- Check browser permissions settings
-- Ensure HTTPS (required for camera access, except localhost)
-- Try a different browser
-- Clear browser cache and reload
-
-#### Issue: "API Error: GEMINI_API_KEY not configured"
-**Solution**:
-- Verify `.env` file has `GEMINI_API_KEY`
-- Check that the API key is valid in Google Cloud Console
-- Ensure the API is enabled in your GCP project
-
-#### Issue: "Audio doesn't play"
-**Solution**:
-- Check browser autoplay permissions
-- Verify audio MIME type: `audio/L16;codec=pcm;rate=24000`
-- Test in `test-audio.html`
-- Check browser console for errors
-
-#### Issue: "3D character not visible"
-**Solution**:
-- Check browser WebGL support (enable in settings if disabled)
-- Verify Three.js loaded correctly (check Network tab)
-- Try incognito mode
-- Update graphics drivers
-
-#### Issue: "ENABLE_AUDIO_TEST not working"
-**Solution**:
-- Ensure value is lowercase in config check: `.lower() == "true"`
-- Set in `.env` as `ENABLE_AUDIO_TEST=True` (any case)
-- Restart development server after changing
-
-#### Issue: "Animation not synced with audio"
-**Solution**:
-- Check audio sample rate matches (should be 24000 Hz)
-- Verify animation timeline duration matches audio duration
-- Check browser DevTools Timing for frame drops
-- Reduce animation complexity in `useProceduralAnimations.js`
-
-#### Issue: "Production shows mock data instead of real API"
-**Solution**:
-- In GitHub, settings → Secrets and variables → Actions
-- Verify `ROAST_API_URL` secret is set to your Cloud Function URL
-- Format should be: `https://[REGION]-[PROJECT-ID].cloudfunctions.net/roast_me`
-- After adding secret, push code or use workflow_dispatch to redeploy
-- GitHub Actions will warn if secret is missing (check Actions tab)
-
-#### Issue: "net::ERR_NAME_NOT_RESOLVED in production"
-**Solution**:
-- This means the API URL environment variable is not configured
-- Check DevTools (F12) → Console for debug logs
-- Verify you have set the `ROAST_API_URL` GitHub secret (not just in `.env`)
-- `.env` works locally but GitHub Actions secrets are needed for production
-- Redeploy after adding the secret: `git push` or use Actions tab to run workflow manually
-
-### Debug Mode
-
-Enable detailed logging:
-
-1. **Frontend**: Open browser DevTools (F12)
-   - Look for `🎥 CameraCapture`, `📦 useMockRoast`, and `🎬 ThreeScene` logs
-
-2. **Backend**: Check Cloud Function logs
-   ```bash
-   gcloud functions logs read roast_me --limit 50
-   ```
-
-3. **Local Backend Testing**:
-   ```bash
-   cd functions
-   python -c "from main import roast_me; roast_me(request)" 
-   ```
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these guidelines:
-
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
-
-### Code Style
-
-- **JavaScript**: Use ES6+ syntax, follow existing patterns
-- **Python**: Follow PEP 8, use type hints
-- **Vue**: Use Composition API with `<script setup>`
-- **CSS**: Use Tailwind utility classes
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- **Google Gemini API** for AI capabilities
-- **Three.js** community for 3D graphics
-- **Nuxt** and **Vue** communities
-- **Firebase** for hosting and backend services
-
----
-
-## 📧 Support
-
-For issues, questions, or suggestions:
-- Open a [GitHub Issue](https://github.com/Abel-Moremi/roast-me/issues)
-- Check [Discussions](https://github.com/Abel-Moremi/roast-me/discussions)
+MIT. See [LICENSE](LICENSE).
 
 ---
 

@@ -137,10 +137,13 @@ def format_auto_transitions_section() -> str:
     Returns:
         str: Formatted auto-transition rules
     """
-    return """=== AUTO-TRANSITIONS ===
-- After "walk-relaxed-start" reaches its end, auto-queue "walk-relaxed-loop"
-- After non-looping animations, return to "idle"
-- Character auto-transitions between animations for smooth flow"""
+    return """=== NO AUTO-TRANSITIONS ===
+- The character ONLY plays what the timeline lists - nothing is queued automatically
+- Every animation needs its own keyframe, including "walk-relaxed-loop" after
+  "walk-relaxed-start" and "walk-relaxed-end" after the loop
+- One-shot clips (walk-relaxed-start, walk-relaxed-end, stand-to-sit) hold their
+  final pose until the next keyframe, so keep those keyframes close to the clip length
+- Other animations loop until the next keyframe starts"""
 
 
 def format_constraints_section(duration: float) -> str:
@@ -161,15 +164,18 @@ Valid intensity: 0.0 - 1.0
 Timeline must span 0 to {duration} seconds exactly"""
 
 
-def format_generation_requirements() -> str:
+def format_generation_requirements(duration: float) -> str:
     """
     Format the generation requirements checklist.
     
+    Args:
+        duration: Audio duration in seconds
+        
     Returns:
         str: Formatted requirements
     """
-    return """=== GENERATION REQUIREMENTS ===
-✓ Timeline spans 0 to {{ duration }} seconds exactly
+    return f"""=== GENERATION REQUIREMENTS ===
+✓ Timeline spans 0 to {duration} seconds exactly
 ✓ Minimum 3 keyframes, maximum 10
 ✓ All animation names MUST be from exact list (no variations, no typos)
 ✓ All expression names from AVAILABLE list
@@ -258,7 +264,7 @@ def build_animation_generation_prompt(transcript: str, duration: float) -> str:
     walk_section = format_walk_sequence_section()
     transitions_section = format_auto_transitions_section()
     constraints_section = format_constraints_section(duration)
-    requirements_section = format_generation_requirements()
+    requirements_section = format_generation_requirements(duration)
     strategy_section = format_strategy_section()
     mistakes_section = format_common_mistakes_section()
     
@@ -282,7 +288,10 @@ Generate a detailed animation script that respects a FINITE STATE MACHINE with s
 {expressions_str}
 
 {constraints_section}
-Transcript: "{transcript[:150]}{'...' if len(transcript) > 150 else ''}"
+=== TRANSCRIPT (the full roast, spoken at an even pace over {duration} seconds) ===
+Time gestures and expressions to the jokes: a line that is X% through the
+transcript is spoken roughly X% of the way through the audio.
+"{transcript}"
 
 === RESPONSE FORMAT ===
 Return ONLY valid JSON (no markdown, explanations, or extra text):
