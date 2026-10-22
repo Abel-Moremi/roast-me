@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 # MAIN VALIDATION ENTRY POINT
 # ============================================
 
-def validate_animation_script(script: Dict[str, Any], expected_duration: float) -> Tuple[bool, List[str]]:
+def validate_animation_script(
+    script: Dict[str, Any], expected_duration: float
+) -> Tuple[bool, List[str], List[str]]:
     """
     Validate animation script structure and content against state machine rules.
     
@@ -42,52 +44,47 @@ def validate_animation_script(script: Dict[str, Any], expected_duration: float) 
         expected_duration: Expected duration in seconds
         
     Returns:
-        Tuple of (is_valid: bool, issues: List[str])
-        is_valid is True only if script passes all validations.
-        issues contains all validation error/warning messages.
+        Tuple of (is_valid: bool, errors: List[str], warnings: List[str])
+        Errors make the script unusable (bad structure, broken timing,
+        state machine violations), so is_valid is True only when there are none.
+        Warnings are quality issues (duration drift, gaps, keyframe count)
+        that the frontend copes with, so the script is still used.
     """
-    issues = []
-    
-    # Phase 1: Structure validation
+    errors: List[str] = []
+    warnings: List[str] = []
+
+    # Structure
     if not isinstance(script, dict):
-        issues.append("Script must be a dictionary")
-        return False, issues
-    
-    # Phase 2: Metadata validation
+        return False, ["Script must be a dictionary"], warnings
+
+    # Metadata problems are warnings: the frontend only shows it on the
+    # in-scene roast frame and has defaults for every field
     metadata = script.get("metadata")
     if not metadata:
-        issues.append("Missing 'metadata' section")
+        warnings.append("Missing 'metadata' section")
     else:
-        metadata_issues = _validate_metadata(metadata, expected_duration)
-        issues.extend(metadata_issues)
-    
-    # Phase 3: Timeline structure validation
+        warnings.extend(_validate_metadata(metadata, expected_duration))
+
+    # Timeline structure
     timeline = script.get("timeline", [])
-    if not timeline:
-        issues.append("Timeline is empty or missing")
-        return len(issues) == 0, issues
-    
     if not isinstance(timeline, list):
-        issues.append("Timeline must be a list")
-        return False, issues
-    
-    timeline_issues = _validate_timeline_structure(timeline)
-    issues.extend(timeline_issues)
-    
-    # Phase 4: Keyframe content validation
+        return False, errors + ["Timeline must be a list"], warnings
+    if not timeline:
+        return False, errors + ["Timeline is empty or missing"], warnings
+
+    warnings.extend(_validate_timeline_structure(timeline))
+
+    # Keyframe content and timing
     for i, frame in enumerate(timeline):
-        frame_issues = _validate_keyframe(frame, i, expected_duration)
-        issues.extend(frame_issues)
-    
-    # Phase 5: Timeline continuity validation
-    continuity_issues = _validate_timeline_continuity(timeline, expected_duration)
-    issues.extend(continuity_issues)
-    
-    # Phase 6: State machine rules validation
-    state_machine_issues = _validate_state_machine_rules(timeline)
-    issues.extend(state_machine_issues)
-    
-    return len(issues) == 0, issues
+        errors.extend(_validate_keyframe(frame, i, expected_duration))
+
+    # Coverage and gaps
+    warnings.extend(_validate_timeline_continuity(timeline, expected_duration))
+
+    # State machine rules
+    errors.extend(_validate_state_machine_rules(timeline))
+
+    return len(errors) == 0, errors, warnings
 
 
 # ============================================
@@ -272,11 +269,7 @@ def _validate_keyframe_timing(frame: Dict[str, Any], index: int, expected_durati
             issues.append(
                 f"Keyframe {index} endTime ({end_time}s) must be after startTime ({start_time}s)"
             )
-        if end_time > expected_duration + 1:  # 1 second tolerance
-            issues.append(
-                f"Keyframe {index} endTime ({end_time}s) exceeds duration ({expected_duration}s)"
-            )
-    
+
     return issues
 
 
@@ -318,6 +311,14 @@ def _validate_timeline_continuity(timeline: List[Dict[str, Any]], expected_durat
             f"Suggestion: extend final animation or add new keyframes."
         )
     
+    # Check for keyframes running past the audio (they simply never play)
+    for i, frame in enumerate(timeline):
+        end_time = frame.get("endTime", 0) if isinstance(frame, dict) else 0
+        if isinstance(end_time, (int, float)) and end_time > expected_duration + 1:
+            issues.append(
+                f"Keyframe {i} endTime ({end_time}s) exceeds duration ({expected_duration}s)"
+            )
+
     # Check for significant gaps between keyframes
     for i in range(len(timeline) - 1):
         current_end = timeline[i].get("endTime", 0)
@@ -421,19 +422,16 @@ def _validate_posture_rules(
     # Rule 1: Sitting lock enforcement
     if is_sitting and animation != "idle":
         issues.append(
-            f"Keyframe {i}: '{animation}' violates sit lock. "
+            f"Keyframe {index}: '{animation}' violates sit lock. "
             f"Once 'stand-to-sit' completes, only 'idle' is allowed. "
             f"Suggestion: use 'idle' or add a standing animation before sit transition."
         )
-    
-    # Rule 2: Posture requirement checking
-    if anim_config.get("required_posture") == Posture.STANDING and current_posture == Posture.SITTING:
-        if not is_sitting:  # Only error if not permanently locked
-            issues.append(
-                f"Keyframe {index}: '{animation}' requires standing but character is sitting. "
-                f"Suggestion: place animation before 'stand-to-sit' or use idle."
-            )
-    
+
+    # Sitting always means sit-locked (there is no stand-up animation), so the
+    # sit lock above also covers "standing animation while seated". If a
+    # stand-up clip is ever added, check required_posture against
+    # current_posture here.
+
     return issues
 
 
@@ -531,16 +529,19 @@ def _update_posture_state(animation: str, anim_config: Dict[str, Any]) -> Option
     return None
 
 
-def log_validation_issues(issues: List[str]) -> None:
+def log_validation_issues(errors: List[str], warnings: List[str]) -> None:
     """
-    Log validation issues at appropriate severity levels.
-    
+    Log validation errors and warnings.
+
     Args:
-        issues: List of validation issue messages
+        errors: Issues that make the script unusable
+        warnings: Quality issues that are tolerated
     """
-    if not issues:
-        return
-    
-    logger.warning(f"Animation script validation found {len(issues)} issue(s):")
-    for issue in issues:
-        logger.warning(f"  - {issue}")
+    if errors:
+        logger.warning(f"Animation script validation found {len(errors)} error(s):")
+        for issue in errors:
+            logger.warning(f"  - {issue}")
+    if warnings:
+        logger.info(f"Animation script validation found {len(warnings)} warning(s):")
+        for issue in warnings:
+            logger.info(f"  - {issue}")

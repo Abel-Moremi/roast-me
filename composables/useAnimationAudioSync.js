@@ -16,9 +16,9 @@ import { ref, computed } from 'vue'
 export const useAnimationAudioSync = () => {
   // ====== Constants ======
   const DEFAULT_ANIMATION = 'idle'
+  const SEATED_IDLE_ANIMATION = 'sitTalk'
   const DEFAULT_EXPRESSION = 'neutral'
   const DEFAULT_INTENSITY = 0.5
-  const TRANSITION_THRESHOLD = 0.95 // Trigger transition at 95% through frame
   const DEBUG_MODE = false // Toggle for detailed logging
 
   // ====== State: Animation Script ======
@@ -180,6 +180,18 @@ export const useAnimationAudioSync = () => {
   }
 
   /**
+   * Whether a stand-to-sit keyframe comes before the given frame
+   * @param {Object} frame - Timeline frame
+   * @returns {boolean} True if the character is seated by this frame
+   * @private
+   */
+  const hasSatDownBefore = (frame) => {
+    const timeline = animationScript.value?.timeline || []
+    const index = timeline.indexOf(frame)
+    return timeline.slice(0, index).some(f => f.animation === 'stand-to-sit')
+  }
+
+  /**
    * Calculate progress within the current frame (0-1)
    * 
    * @param {Object} frame - Timeline frame
@@ -202,7 +214,6 @@ export const useAnimationAudioSync = () => {
    * - Find current timeline frame
    * - Update animation state
    * - Track frame progress
-   * - Signal when to transition animations
    * 
    * @param {number} audioTime - Current audio time in seconds
    * @returns {Object|null} Sync state with animation/expression info, or null if no timeline
@@ -227,14 +238,21 @@ export const useAnimationAudioSync = () => {
     // Update state from current frame
     currentFrame.value = current
     nextFrame.value = next
-    const normalizedAnimation = normalizeAnimationName(current.animation)
+    let normalizedAnimation = normalizeAnimationName(current.animation)
+
+    // Once the character has sat down, the backend only allows "idle", which
+    // is a standing clip. Swap it for the seated idle so he stays seated.
+    // Checked from the timeline (not stored state) so seeking back works.
+    if (normalizedAnimation === DEFAULT_ANIMATION && hasSatDownBefore(current)) {
+      normalizedAnimation = SEATED_IDLE_ANIMATION
+    }
+
     currentAnimation.value = normalizedAnimation
     currentExpression.value = current.expression || DEFAULT_EXPRESSION
     currentIntensity.value = current.intensity || DEFAULT_INTENSITY
 
     // Calculate progress within frame
     const frameProgress = calculateFrameProgress(current, audioTime)
-    const shouldTransition = frameProgress > TRANSITION_THRESHOLD && next
 
     log('[update]', `Time: ${audioTime.toFixed(2)}s | Animation: ${normalizedAnimation} | Progress: ${frameProgress.toFixed(2)}`)
 
@@ -244,7 +262,6 @@ export const useAnimationAudioSync = () => {
       intensity: currentIntensity.value,
       frameProgress,
       notes: current.notes,
-      shouldTransition,
       currentFrame: current,
       nextFrame: next
     }

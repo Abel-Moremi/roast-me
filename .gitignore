@@ -137,3 +137,18 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# Obsidian vault (docs-roast-me) - keep shared settings, ignore per-user state
+**/.obsidian/workspace.json
+**/.obsidian/workspace-mobile.json
+**/.obsidian/workspaces.json
+**/.obsidian/cache
+**/.obsidian/plugins/*/data.json
+**/.trash/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Nuxt/Nitro build output
+.output

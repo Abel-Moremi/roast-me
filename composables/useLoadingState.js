@@ -7,6 +7,7 @@ import { ref, computed } from 'vue'
 export const useLoadingState = () => {
   // ====== Loading Flags ======
   const isLoading = ref(true)
+  const loadError = ref(null) // message shown when loading can't finish
   const sceneLoaded = ref(false)
   const characterLoaded = ref(false)
   const animationsLoaded = ref(false)
@@ -117,11 +118,21 @@ export const useLoadingState = () => {
   }
 
   /**
+   * Mark loading as failed so the loading screen can show an error
+   * @param {string} message - Message for the user
+   */
+  const failLoading = (message) => {
+    console.error('❌ Loading failed:', message)
+    loadError.value = message
+  }
+
+  /**
    * Reset loading state (for retries or resets)
    */
   const reset = () => {
     console.log('🔄 Loading: Reset to initial state')
     isLoading.value = true
+    loadError.value = null
     sceneLoaded.value = false
     characterLoaded.value = false
     animationsLoaded.value = false
@@ -156,6 +167,7 @@ export const useLoadingState = () => {
   return {
     // ──── Flags ────
     isLoading,
+    loadError,
     sceneLoaded,
     characterLoaded,
     animationsLoaded,
@@ -184,6 +196,7 @@ export const useLoadingState = () => {
 
     // ──── Overall Methods ────
     completeLoading,
+    failLoading,
     reset,
     getLoadingSummary
   }

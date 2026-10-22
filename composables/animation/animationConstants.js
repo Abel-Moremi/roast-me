@@ -4,18 +4,35 @@
  */
 
 /**
- * Available animation states and their corresponding GLTF clip names
+ * Available animation states and their corresponding GLTF clip names.
+ *
+ * Keys are the camelCase form of the names the backend puts in the animation
+ * timeline (functions/services/animation_constants.py), e.g.
+ * "walk-relaxed-start" -> walkRelaxedStart. Every backend animation must have
+ * an entry here, or the character ignores that keyframe.
+ *
+ * `loopOnce` marks transition clips that should play once and hold their
+ * final pose instead of repeating.
  * @type {Object}
  */
 export const ANIMATION_STATES = {
+  // Backend timeline animations
   idle: { clipName: 'idle', weight: 1.0, description: 'Standing idle' },
+  walkRelaxedStart: { clipName: 'walk-relaxed-start', weight: 0.8, loopOnce: true, description: 'Start walking' },
+  walkRelaxedLoop: { clipName: 'walk-relaxed-loop', weight: 0.8, description: 'Casual walking loop' },
+  walkRelaxedEnd: { clipName: 'walk-relaxed-end', weight: 0.8, loopOnce: true, description: 'Stop walking' },
+  standToSit: { clipName: 'stand-to-sit', weight: 1.0, loopOnce: true, description: 'Sit down' },
+  spellcast: { clipName: 'spellcast', weight: 0.8, description: 'Spellcast gesture' },
+  aerobicDance: { clipName: 'aerobic-dance', weight: 0.9, description: 'High-energy dance' },
+  relax: { clipName: 'relax', weight: 1.0, description: 'Relaxing pose' },
+  walkThink: { clipName: 'walk-think', weight: 0.7, description: 'Walking while thinking' },
+
+  // Frontend only: sitTalk is the seated idle used after standToSit; the
+  // rest are aliases for testing from the browser console
+  sitTalk: { clipName: 'sit-talk', weight: 1.0, description: 'Sitting and talking' },
   walkRelaxed: { clipName: 'walk-relaxed-loop', weight: 0.8, description: 'Casual walking' },
   walk: { clipName: 'walk-relaxed-loop', weight: 0.8, description: 'Walking' },
-  walkThink: { clipName: 'walk-think', weight: 0.7, description: 'Walking while thinking' },
   run: { clipName: 'aerobic-dance', weight: 0.9, description: 'Running/energetic movement' },
-  relax: { clipName: 'relax', weight: 1.0, description: 'Relaxing pose' },
-  sitTalk: { clipName: 'sit-talk', weight: 1.0, description: 'Sitting and talking' },
-  spellcast: { clipName: 'spellcast', weight: 0.8, description: 'Spellcast gesture' },
   action: { clipName: 'Action', weight: 0.9, description: 'Action pose' },
   default: { clipName: 'Default', weight: 1.0, description: 'Default pose' }
 }

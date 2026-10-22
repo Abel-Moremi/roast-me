@@ -44,7 +44,6 @@ export function useAnimationManager() {
   const model = ref(null)
   const mixer = ref(null)
   const bones = ref({})
-  const boneBaseRotations = ref({})
   const animations = ref({})
 
   // Animation state tracking
@@ -62,6 +61,10 @@ export function useAnimationManager() {
   // Tracks the currently playing THREE.AnimationAction so transitions can
   // crossfade out of it instead of leaving it running at full weight
   let currentAction = null
+
+  // Sway offsets added last frame, so they can be removed before the next
+  // mixer update ({ bone, axis, offset })
+  const appliedOffsets = []
 
   // ============================================
   // COMPUTED PROPERTIES
@@ -158,11 +161,6 @@ export function useAnimationManager() {
         const bone = modelRef.getObjectByName(name)
         if (bone && bone.isBone) {
           bones.value[logicalName] = bone
-          boneBaseRotations.value[logicalName] = {
-            x: bone.rotation.x,
-            y: bone.rotation.y,
-            z: bone.rotation.z
-          }
           console.log(`  ✓ ${logicalName} → ${name}`)
           found++
           break  // Found this bone, move to next logical name
@@ -212,7 +210,7 @@ export function useAnimationManager() {
     const stateConfig = ANIMATION_STATES[newState]
     const clipName = stateConfig.clipName
 
-    if (playAnimationClip(clipName, speed)) {
+    if (playAnimationClip(clipName, speed, stateConfig.loopOnce === true)) {
       console.log(`  ✓ Animation started: "${clipName}"`)
       return true
     } else {
@@ -229,7 +227,7 @@ export function useAnimationManager() {
    * @param {number} fadeDuration - Fade duration in seconds
    * @returns {boolean} Success status
    */
-  function playAnimationClip(clipName, fadeDuration = 0.3) {
+  function playAnimationClip(clipName, fadeDuration = 0.3, loopOnce = false) {
     if (!mixer.value) {
       console.error('❌ AnimationManager: Mixer not initialized')
       return false
@@ -244,9 +242,12 @@ export function useAnimationManager() {
     // Create action if needed
     if (!animData.action) {
       animData.action = mixer.value.clipAction(animData.clip)
-      animData.action.loop = THREE.LoopRepeat
-      animData.action.clampWhenFinished = false
     }
+
+    // Transition clips (walk start/end, stand-to-sit) play once and hold
+    // their last pose; everything else loops
+    animData.action.setLoop(loopOnce ? THREE.LoopOnce : THREE.LoopRepeat, Infinity)
+    animData.action.clampWhenFinished = loopOnce
 
     const newAction = animData.action
     const previousAction = currentAction
@@ -309,9 +310,10 @@ export function useAnimationManager() {
   // PROCEDURAL ANIMATIONS
   // ============================================
   /**
-   * Apply procedural micro-movements
-   * Called AFTER mixer.update() for layering effects
-   * 
+   * Apply procedural micro-movements on top of the clip pose.
+   * Called AFTER mixer.update(). The sway is additive: it offsets whatever
+   * rotation the clip left on the bone instead of replacing it.
+   *
    * @private
    * @param {number} delta - Delta time in seconds
    */
@@ -320,60 +322,32 @@ export function useAnimationManager() {
 
     time.value += delta
 
-    // Apply each configured procedural movement
-    applyBreathing()
-    applyHeadSway()
-    applyShoulderBounce()
-  }
-
-  /**
-   * Apply breathing animation to chest
-   * @private
-   */
-  function applyBreathing() {
-    const config = PROCEDURAL_CONFIG.breathing
-    if (!config.enabled) return
-
-    const bone = getBone(bones.value, config.bones[0])
-    if (!bone) return
-
-    const sine = Math.sin(time.value * config.speed * Math.PI * 2)
-    const baseRotation = boneBaseRotations.value[config.bones[0]]
-    bone.rotation[config.axis] = baseRotation[config.axis] + sine * config.range
-  }
-
-  /**
-   * Apply head sway animation
-   * @private
-   */
-  function applyHeadSway() {
-    const config = PROCEDURAL_CONFIG.headSway
-    if (!config.enabled) return
-
-    const bone = getBone(bones.value, config.bones[0])
-    if (!bone) return
-
-    const sine = Math.sin(time.value * config.speed * Math.PI * 2)
-    const baseRotation = boneBaseRotations.value[config.bones[0]]
-    bone.rotation[config.axis] = baseRotation[config.axis] + sine * config.range
-  }
-
-  /**
-   * Apply shoulder bounce animation
-   * @private
-   */
-  function applyShoulderBounce() {
-    const config = PROCEDURAL_CONFIG.shoulderBounce
-    if (!config.enabled) return
-
-    config.bones.forEach((boneName) => {
-      const bone = getBone(bones.value, boneName)
-      if (!bone) return
-
+    Object.values(PROCEDURAL_CONFIG).forEach((config) => {
+      if (!config.enabled) return
       const sine = Math.sin(time.value * config.speed * Math.PI * 2)
-      const baseRotation = boneBaseRotations.value[boneName]
-      bone.rotation[config.axis] = baseRotation[config.axis] + sine * config.range
+      const offset = sine * config.range
+
+      config.bones.forEach((boneName) => {
+        const bone = getBone(bones.value, boneName)
+        if (!bone) return
+        bone.rotation[config.axis] += offset
+        appliedOffsets.push({ bone, axis: config.axis, offset })
+      })
     })
+  }
+
+  /**
+   * Undo last frame's sway. Runs BEFORE mixer.update(): bones the clip
+   * animates get overwritten anyway, but bones it doesn't touch would
+   * otherwise keep every frame's offset and drift.
+   *
+   * @private
+   */
+  function removeProceduralOffsets() {
+    for (const { bone, axis, offset } of appliedOffsets) {
+      bone.rotation[axis] -= offset
+    }
+    appliedOffsets.length = 0
   }
 
   // ============================================
@@ -390,6 +364,8 @@ export function useAnimationManager() {
 
     // Update audio intensity
     audioIntensity.value = audioIntensityValue
+
+    removeProceduralOffsets()
 
     // Update mixer (plays baked animations)
     mixer.value.update(delta)

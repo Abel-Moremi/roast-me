@@ -1,0 +1,26 @@
+name: Tests
+
+# Backend animation tests. They use only the Python standard library, so no
+# dependencies or API keys are needed.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Run animation tests
+        working-directory: functions
+        run: python -m unittest discover -s tests -v

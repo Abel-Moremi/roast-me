@@ -11,7 +11,7 @@
 
     <script>
         async function loadMockData() {
-            const response = await fetch('./mock/output.txt');
+            const response = await fetch('./public/mock/output.txt');
             const json = await response.json();
             return json;
         }

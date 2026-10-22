@@ -12,6 +12,7 @@ This module provides utility functions organized into logical groups:
 """
 
 import json
+import re
 import logging
 from typing import Dict, Tuple, Optional, Any
 from .animation_constants import (
@@ -257,6 +258,10 @@ INVALID_TO_VALID_MAPPING: Dict[str, str] = {
     "idle-stand": "idle"
 }
 
+_LOWERCASE_MAPPING: Dict[str, str] = {
+    key.lower(): value for key, value in INVALID_TO_VALID_MAPPING.items()
+}
+
 
 def fix_invalid_animation_name(animation_name: str) -> str:
     """
@@ -281,13 +286,24 @@ def fix_invalid_animation_name(animation_name: str) -> str:
     if is_valid_animation(animation_name):
         return animation_name
     
-    # Check if it's a known invalid mapping
-    lower_name = animation_name.lower()
-    if lower_name in INVALID_TO_VALID_MAPPING:
-        fixed = INVALID_TO_VALID_MAPPING[lower_name]
+    if not isinstance(animation_name, str):
+        logger.warning(f"Animation name is not a string: {animation_name!r}, defaulting to '{DEFAULT_ANIMATION}'")
+        return DEFAULT_ANIMATION
+
+    # Check if it's a known invalid mapping (case-insensitive, since the
+    # mapping keys include camelCase names)
+    lower_name = animation_name.strip().lower()
+    if lower_name in _LOWERCASE_MAPPING:
+        fixed = _LOWERCASE_MAPPING[lower_name]
         logger.warning(f"Fixed invalid animation: '{animation_name}' → '{fixed}'")
         return fixed
-    
+
+    # The frontend's camelCase key for a valid name (walkRelaxedStart)
+    kebab_name = re.sub(r"(?<=[a-z0-9])([A-Z])", r"-\1", animation_name.strip()).lower()
+    if is_valid_animation(kebab_name):
+        logger.warning(f"Fixed invalid animation: '{animation_name}' → '{kebab_name}'")
+        return kebab_name
+
     # Unknown animation - default to idle
     logger.warning(f"Unknown animation name: '{animation_name}', defaulting to '{DEFAULT_ANIMATION}'")
     return DEFAULT_ANIMATION

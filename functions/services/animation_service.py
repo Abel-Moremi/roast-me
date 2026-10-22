@@ -105,27 +105,27 @@ def generate_animation_script(
             logger.warning("Gemini returned no animation script - using fallback")
             return generate_default_animation_script(duration_seconds, transcript)
         
-        # Step 3: Validate script against state machine rules
-        is_valid, issues = validate_animation_script(animation_script, duration_seconds)
-        
-        if issues:
-            log_validation_issues(issues)
-            if not is_valid:
-                logger.warning(
-                    f"Validation failed ({len(issues)} issues) - using fallback script"
-                )
-                return generate_default_animation_script(duration_seconds, transcript)
-            else:
-                logger.info(f"Validation passed with {len(issues)} warning(s)")
-        else:
-            logger.info("Validation passed with no issues")
-        
-        # Step 4: Sanitize and normalize
+        # Step 3: Sanitize first, so fixable problems (misspelled animation
+        # names, out-of-range intensity, unknown expressions) are repaired
+        # instead of rejecting the whole script
         sanitized = sanitize_animation_script(animation_script)
         if not sanitized:
             logger.warning("Failed to sanitize script - using fallback")
             return generate_default_animation_script(duration_seconds, transcript)
-        
+
+        # Step 4: Validate against state machine rules. Only errors reject
+        # the script; warnings are logged and tolerated.
+        is_valid, errors, warnings = validate_animation_script(sanitized, duration_seconds)
+        log_validation_issues(errors, warnings)
+
+        if not is_valid:
+            logger.warning(
+                f"Validation failed ({len(errors)} errors) - using fallback script"
+            )
+            return generate_default_animation_script(duration_seconds, transcript)
+
+        logger.info(f"Validation passed with {len(warnings)} warning(s)")
+
         keyframe_count = len(sanitized.get('timeline', []))
         logger.info(f"Generated animation script with {keyframe_count} keyframes")
         

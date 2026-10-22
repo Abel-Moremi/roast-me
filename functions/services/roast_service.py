@@ -14,6 +14,7 @@ if __name__ != "__main__":
 from google import genai
 from google.genai import types
 import config
+from utils.gemini_errors import as_quota_error
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ def generate_roast(client, image_bytes):
         
     Raises:
         ValueError: If roast generation fails or is blocked
+        QuotaExceededError: If the Gemini API key's quota is used up
     """
     logger.info(f"Generating roast with vision model: {config.VISION_MODEL}")
     logger.info(f"Temperature: {config.ROAST_TEMPERATURE}, Max tokens: {config.ROAST_MAX_TOKENS}")
@@ -53,6 +55,11 @@ def generate_roast(client, image_bytes):
             )
             logger.info("Successfully called API with response_schema")
         except Exception as schema_error:
+            # Out of quota: retrying would only fail again (and cost a request)
+            quota_error = as_quota_error(schema_error)
+            if quota_error:
+                raise quota_error from schema_error
+
             logger.warning(f"Failed with response_schema: {schema_error}")
             logger.info("Retrying without response_schema...")
             
@@ -194,6 +201,12 @@ def generate_roast(client, image_bytes):
         return roast_data
         
     except Exception as e:
+        quota_error = as_quota_error(e)
+        if quota_error:
+            logger.warning(f"Gemini quota exceeded during roast: {e.__cause__ or e}")
+            if quota_error is e:
+                raise
+            raise quota_error from e
         logger.exception(f"Error in generate_roast: {e}")
         raise
 
@@ -201,6 +214,9 @@ def generate_roast(client, image_bytes):
 def build_narration_text(roast_data):
     """
     Build narration text from roast data for TTS.
+
+    The frontend's subtitles (composables/useSubtitles.js) split the audio
+    into these same pieces, so keep the two in step.
     
     Args:
         roast_data: Dict containing roast information

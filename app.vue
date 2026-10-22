@@ -11,6 +11,7 @@
         :sceneProgress="sceneProgress"
         :characterProgress="characterProgress"
         :animationProgress="animationProgress"
+        :error="loadError"
         @loadingComplete="handleLoadingComplete"
       />
 
@@ -27,9 +28,9 @@
           :getAudioFrequencyData="getAudioFrequencyData"
           :syncAnimation="syncAnimation"
           :syncExpression="syncExpression"
-          :syncIntensity="syncIntensity"
           @sceneReady="handleSceneReady"
           @characterLoadProgress="handleCharacterLoadProgress"
+          @characterLoadError="handleCharacterLoadError"
           @roastFrameClicked="showRoastModal = true"
           @photoClicked="showPhotoModal = true"
         />
@@ -44,8 +45,54 @@
       <CameraCapture 
         v-if="!capturedImage"
         @imageCaptured="handleImageCaptured"
-        @roastReceived="handleRoastReceived"
       />
+
+      <!-- Error when no roast could be produced at all -->
+      <div v-if="roastError" class="fixed top-8 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+        <div class="bg-black/90 border border-red-900/70 rounded-lg px-4 py-3 text-red-400 text-sm shadow-2xl">
+          {{ roastError }}
+        </div>
+      </div>
+
+      <!-- Gemini API key's request limit reached -->
+      <div v-if="quotaError" class="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+        <div class="pointer-events-auto bg-black/90 backdrop-blur-md border border-yellow-600/80 rounded-lg p-6 shadow-2xl w-full max-w-sm text-center" role="alert">
+          <p class="text-3xl mb-2">🎤😮‍💨</p>
+          <p class="text-yellow-400 text-lg font-bold">OUT OF ROASTS FOR NOW</p>
+          <p class="text-gray-300 text-sm mt-2">{{ quotaError.message }}</p>
+          <p class="text-gray-500 text-xs mt-2">
+            The app's Gemini API key has a request limit, and it's been reached. Your photo wasn't roasted.
+          </p>
+          <div class="flex flex-col gap-2 mt-5">
+            <button
+              v-if="quotaError.period === 'minute'"
+              @click="retryAfterQuota"
+              class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-bold"
+            >
+              Try again
+            </button>
+            <button
+              @click="watchSampleRoast"
+              class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors text-sm"
+            >
+              Watch a sample roast instead
+            </button>
+            <button
+              @click="reset"
+              class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors text-sm"
+            >
+              Back to camera
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notice when the roast shown is the bundled sample -->
+      <div v-if="roastNotice && roastData" class="fixed top-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+        <div class="bg-black/80 border border-yellow-700/70 rounded-lg px-4 py-2 text-yellow-300 text-xs shadow-2xl">
+          {{ roastNotice }}
+        </div>
+      </div>
       
       <!-- Audio Controls (when roast ready) -->
       <div v-if="roastData" class="fixed bottom-8 right-8 z-50 pointer-events-auto">
@@ -79,7 +126,8 @@
               <button 
                 @click="toggleAudio"
                 :disabled="audioLoading"
-                class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm flex-1"
+                class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm flex-1"
+                :class="{ 'animate-pulse ring-2 ring-red-400': awaitingFirstPlay && !isPlaying }"
               >
                 <span v-if="audioLoading">Loading...</span>
                 <span v-else-if="isPlaying">⏸ Pause</span>
@@ -94,7 +142,20 @@
               >
                 10s ⏩
               </button>
+
+              <button
+                @click="toggleSubtitles"
+                class="px-3 py-2 rounded-lg transition-colors text-sm font-bold"
+                :class="showSubtitles ? 'bg-white text-black' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'"
+                :title="showSubtitles ? 'Hide subtitles' : 'Show subtitles'"
+                :aria-pressed="showSubtitles"
+              >
+                CC
+              </button>
             </div>
+            <p v-if="awaitingFirstPlay && !isPlaying && !audioLoading" class="text-gray-300 text-xs text-center">
+              Press ▶ Play to start the show
+            </p>
             
             <span v-if="audioError" class="text-red-400 text-xs text-center">{{ audioError }}</span>
             
@@ -120,13 +181,56 @@
         </div>
       </div>
       
+      <!-- Subtitles: the line being spoken (timing estimated from text length) -->
+      <div
+        v-if="showSubtitles && currentSubtitle"
+        class="fixed left-4 right-4 md:right-96 bottom-60 md:bottom-8 z-40 flex justify-center pointer-events-none"
+        aria-live="polite"
+      >
+        <p class="bg-black/80 text-white text-base md:text-lg leading-snug px-4 py-2 rounded-lg max-w-2xl text-center shadow-2xl">
+          {{ currentSubtitle }}
+        </p>
+      </div>
+
       <!-- Analyzing State -->
-      <div v-if="isAnalyzing" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50">
-        <div class="bg-black/90 backdrop-blur-md border border-red-900/70 rounded-lg p-6 shadow-2xl w-80">
+      <div v-if="isAnalyzing" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50 w-[calc(100vw-2rem)] max-w-sm">
+        <div class="bg-black/90 backdrop-blur-md border border-red-900/70 rounded-lg p-6 shadow-2xl">
           <div class="flex flex-col items-center gap-4">
-            <div class="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-            <p class="text-red-500 text-lg font-bold text-center">PREPARING YOUR ROAST...</p>
-            <p class="text-gray-400 text-xs text-center">Generating audio and animations (this may take a moment)</p>
+            <div class="flex items-center gap-4 w-full">
+              <img
+                v-if="capturedImage"
+                :src="capturedImage"
+                alt="The snapshot being roasted"
+                class="w-20 h-20 object-cover rounded border-2 border-yellow-600 shrink-0"
+              />
+              <div class="flex-1">
+                <p class="text-red-500 text-lg font-bold leading-tight">PREPARING YOUR ROAST...</p>
+                <p class="text-gray-300 text-xs mt-1">
+                  Only this one snapshot is being roasted. The camera is off.
+                </p>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3 w-full">
+              <div class="w-6 h-6 border-4 border-red-600 border-t-transparent rounded-full animate-spin shrink-0"></div>
+              <p class="text-gray-400 text-xs">
+                Writing the jokes, recording the voice and planning the performance.
+                This can take a minute or more.
+              </p>
+            </div>
+
+            <p class="text-gray-500 text-xs font-mono">Waiting {{ formatTime(analyzingSeconds) }}</p>
+
+            <p class="text-gray-300 text-xs text-center border-t border-red-900/50 pt-3 w-full">
+              Nothing to do while you wait. The show starts by itself when it's ready.
+            </p>
+
+            <button
+              @click="reset"
+              class="pointer-events-auto text-gray-400 hover:text-white text-xs underline"
+            >
+              Cancel and take a new photo
+            </button>
           </div>
         </div>
       </div>
@@ -196,14 +300,17 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import { useAnimationAudioSync } from '@/composables/useAnimationAudioSync'
+import { useRoastApi } from '@/composables/useRoastApi'
 import { useMockRoast } from '@/composables/useMockRoast'
+import { useSubtitles } from '@/composables/useSubtitles'
 import { useLoadingState } from '@/composables/useLoadingState'
 
 // Initialize loading state manager
 const {
   isLoading: isSceneLoading,
+  loadError,
   sceneLoaded,
   characterLoaded,
   animationsLoaded,
@@ -217,7 +324,8 @@ const {
   completeCharacterLoading,
   startAnimationSetup,
   completeAnimationSetup,
-  completeLoading
+  completeLoading,
+  failLoading
 } = useLoadingState()
 
 // Scene setup, the character GLTF fetch, and animation-manager init all begin
@@ -233,10 +341,41 @@ const isAnalyzing = ref(false)
 const audioLoading = ref(false)
 const isPlaying = ref(false)
 const audioError = ref(null)
+const roastError = ref(null)
+const roastNotice = ref(null) // shown when a sample (mock) roast is used
+// Set when the Gemini API key's request limit is reached: { message, period }
+const quotaError = ref(null)
+
+// Increments on every roast request and on reset, so responses that arrive
+// after the user has moved on are ignored
+let roastRequestId = 0
 const showRoastModal = ref(false)
 const showPhotoModal = ref(false)
+
+// Seconds since the current roast request started, shown in the waiting
+// overlay so a long wait doesn't look like a hang
+const analyzingSeconds = ref(0)
+let analyzingTimer = null
+watch(isAnalyzing, (analyzing) => {
+  clearInterval(analyzingTimer)
+  analyzingTimer = null
+  if (analyzing) {
+    const startedAt = Date.now()
+    analyzingSeconds.value = 0
+    analyzingTimer = setInterval(() => {
+      analyzingSeconds.value = (Date.now() - startedAt) / 1000
+    }, 1000)
+  }
+})
+onBeforeUnmount(() => clearInterval(analyzingTimer))
 const currentTime = ref(0)
 const duration = ref(0)
+
+// True from when a roast is ready until it's first played. Autoplay normally
+// starts it; if the browser blocks that, the Play button is highlighted.
+const awaitingFirstPlay = ref(false)
+
+const { showSubtitles, currentSubtitle, toggleSubtitles } = useSubtitles(roastData, currentTime, duration)
 
 // Initialize sync controller
 const { 
@@ -245,8 +384,7 @@ const {
   setPlaying: setSyncPlaying,
   seek: syncSeek,
   currentAnimation: syncAnimation,
-  currentExpression: syncExpression,
-  currentIntensity: syncIntensity
+  currentExpression: syncExpression
 } = useAnimationAudioSync()
 
 let audioContext = null
@@ -266,19 +404,6 @@ const AUDIO_STATES = {
   LOADING: 'loading'
 }
 let audioState = AUDIO_STATES.STOPPED
-
-// Debug watchers to see if sync values are updating
-watch(() => syncAnimation.value, (newVal, oldVal) => {
-  if (newVal !== oldVal) {
-    console.log(`📊 [app.vue] syncAnimation updated: "${oldVal}" → "${newVal}"`)
-  }
-})
-
-watch(() => syncExpression.value, (newVal, oldVal) => {
-  if (newVal !== oldVal) {
-    console.log(`📊 [app.vue] syncExpression updated: "${oldVal}" → "${newVal}"`)
-  }
-})
 
 // ============================================
 // LOADING HANDLERS
@@ -305,6 +430,13 @@ function handleCharacterLoadProgress(percent) {
 }
 
 /**
+ * Called when the character model can't be downloaded or parsed
+ */
+function handleCharacterLoadError() {
+  failLoading("Couldn't load the 3D comedian. Check your connection and reload.")
+}
+
+/**
  * Called when loading screen animation completes
  */
 function handleLoadingComplete() {
@@ -312,92 +444,153 @@ function handleLoadingComplete() {
   // Scene is now fully visible and interactive
 }
 
-function handleImageCaptured(base64Image) {
+const { requestRoast } = useRoastApi()
+
+async function handleImageCaptured(base64Image) {
+  // Still inside the user's click, so the browser lets us unlock audio now
+  // and autoplay the roast later
+  unlockAudio()
   capturedImage.value = base64Image
-  isAnalyzing.value = true
+  await fetchRoast()
 }
 
-function handleRoastReceived(data) {
-  console.log('🎬 handleRoastReceived called')
-  console.log('🎬 data type:', typeof data)
-  console.log('🎬 data is null?', data === null)
-  console.log('🎬 data is undefined?', data === undefined)
-  
-  if (data) {
-    console.log('🎬 data keys:', Object.keys(data).sort())
-    console.log('🎬 data.animationScript type:', typeof data.animationScript)
-    console.log('🎬 data.animationScript is null?', data.animationScript === null)
-    console.log('🎬 data.animationScript is undefined?', data.animationScript === undefined)
-    
-    // Check each property
-    console.log('🎬 Properties check:')
-    console.log('  - has animationScript?', 'animationScript' in data)
-    console.log('  - has audio?', 'audio' in data)
-    console.log('  - has audioMimeType?', 'audioMimeType' in data)
-    console.log('  - has data?', 'data' in data)
-    console.log('  - has success?', 'success' in data)
-    
-    if (data.animationScript) {
-      console.log('🎬 animationScript.timeline exists?', !!data.animationScript.timeline)
-      if (data.animationScript.timeline) {
-        console.log('🎬 Timeline frames count:', data.animationScript.timeline.length)
-      }
+/**
+ * Create/resume the AudioContext. Must be called from a user gesture
+ * (click), otherwise browsers keep it suspended and autoplay is silent.
+ */
+function unlockAudio() {
+  try {
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)()
     }
+    if (audioContext.state === 'suspended') {
+      audioContext.resume().catch(() => {})
+    }
+  } catch (error) {
+    console.warn('Could not unlock audio:', error)
   }
-  
+}
+
+/**
+ * Start the roast as soon as it's ready, if the browser allowed audio.
+ * Otherwise leave it to the (highlighted) Play button.
+ */
+function autoPlayWhenReady() {
+  if (!roastData.value?.audio || audioContext?.state !== 'running') return
+  playAudio()
+}
+
+/**
+ * Send the captured photo to the API (falling back to mock data) and show
+ * the result. Shared by the first capture and "Roast Again".
+ */
+async function fetchRoast() {
+  const requestId = ++roastRequestId
+  isAnalyzing.value = true
+  roastError.value = null
+  roastNotice.value = null
+  quotaError.value = null
+
+  const { data, source, reason } = await requestRoast(capturedImage.value)
+
+  // Reset (or a newer request) happened while we were waiting: drop this one
+  if (requestId !== roastRequestId) return
+
+  if (data?.success && data.data) {
+    if (source === 'mock') {
+      roastNotice.value = reason === 'api-failed'
+        ? "The roast service is unavailable right now, so here's a sample roast."
+        : 'Demo mode: this is a sample roast (no roast API configured).'
+    }
+    // The roast text worked but the voice hit the API key's limit
+    const voiceQuota = data.notices?.find(n => n.code === 'VOICE_QUOTA_EXCEEDED')
+    if (voiceQuota) {
+      roastNotice.value = `${voiceQuota.message} Click the roast frame on the wall to read it.`
+    }
+    handleRoastReceived(data, requestId)
+    return
+  }
+
+  isAnalyzing.value = false
+
+  // The API key's request limit: keep the photo and offer options instead
+  // of just bouncing back to the camera
+  if (data?.code === 'QUOTA_EXCEEDED') {
+    console.warn('Gemini quota exceeded:', data.quotaPeriod)
+    quotaError.value = { message: data.error, period: data.quotaPeriod || null }
+    return
+  }
+
+  console.error('No usable roast response:', data)
+  // Coded errors (e.g. RATE_LIMITED) already carry a full sentence
+  roastError.value = data?.error
+    ? (data.code ? data.error : `Roast failed: ${data.error}`)
+    : 'Failed to generate roast. Please try again.'
+  // Bring the camera back so the user can retry
+  capturedImage.value = null
+}
+
+const { loadMockData } = useMockRoast()
+
+/** Quota panel: play the bundled sample roast with the current photo. */
+async function watchSampleRoast() {
+  unlockAudio()
+  quotaError.value = null
+  const requestId = ++roastRequestId
+  isAnalyzing.value = true
+  const data = await loadMockData()
+  if (requestId !== roastRequestId) return
+  if (!data?.success) {
+    isAnalyzing.value = false
+    roastError.value = "Couldn't load the sample roast either. Please try again later."
+    capturedImage.value = null
+    return
+  }
+  roastNotice.value = "Sample roast: the live roast has hit its usage limit, so this isn't about your photo."
+  handleRoastReceived(data, requestId)
+}
+
+/** Quota panel, per-minute limit: send the same photo again. */
+function retryAfterQuota() {
+  unlockAudio()
+  fetchRoast()
+}
+
+function handleRoastReceived(data, requestId = roastRequestId) {
   // 1.5 second delay for comedic timing
   setTimeout(() => {
-    console.log('🎬 Inside setTimeout - initializing sync')
+    // Ignore if the user reset or re-roasted during the comic-timing pause
+    if (requestId !== roastRequestId) return
     roastData.value = data
-    // Keep analyzing state while decoding audio
     audioError.value = null
     audioBuffer = null
     audioState = AUDIO_STATES.STOPPED
     pausedAt = 0
     currentTime.value = 0
     duration.value = 0
-    
-    // Initialize animation-audio sync controller with animation script
-    if (data?.animationScript) {
-      console.log('🎬 animationScript found, preparing to initialize sync')
-      const audioData = data.audio || data.animationScript?.audio
-      if (audioData) {
-        try {
-          // Decode to get actual duration
-          const binaryString = atob(audioData)
-          const bytes = new Uint8Array(binaryString.length)
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i)
-          }
-          const sampleRate = 24000
-          const numSamples = bytes.length / 2
-          const audioDuration = numSamples / sampleRate
-          
-          console.log('🎬 Initializing sync controller with duration:', audioDuration)
-          console.log('🎬 About to call initSync with script:', data.animationScript)
-          initSync(data.animationScript, audioDuration)
-          console.log('🎬 initSync called successfully')
-          
-          // Only mark as not analyzing AFTER everything is ready
-          isAnalyzing.value = false
-        } catch (error) {
-          console.error('Error decoding audio:', error)
-          audioError.value = 'Failed to decode audio'
-          isAnalyzing.value = false
-        }
-      } else {
-        console.log('🎬 No audio data found')
-        isAnalyzing.value = false
+    awaitingFirstPlay.value = !!data?.audio
+
+    const audioData = data?.audio || data?.animationScript?.audio
+    if (data?.animationScript && audioData) {
+      try {
+        // Measure the real audio length from the PCM size (16-bit mono, 24 kHz)
+        const sampleRate = 24000
+        const audioDuration = (atob(audioData).length / 2) / sampleRate
+        initSync(data.animationScript, audioDuration)
+      } catch (error) {
+        console.error('Error decoding audio:', error)
+        audioError.value = 'Failed to decode audio'
       }
-    } else {
-      console.log('🎬 No animationScript in data')
-      isAnalyzing.value = false
     }
+
+    isAnalyzing.value = false
+    autoPlayWhenReady()
   }, 1500)
 }
 
 async function reRoast() {
   if (!capturedImage.value || isAnalyzing.value) return
+  unlockAudio()
   
   // Stop any playing audio
   if (audioSource) {
@@ -433,66 +626,7 @@ async function reRoast() {
   showRoastModal.value = false
   
   // Trigger re-analysis with the same image
-  isAnalyzing.value = true
-  
-  // Send the captured image to the API (same as initial capture)
-  // Use environment variable, fallback gracefully to mock
-  const apiUrl = import.meta.env.VITE_ROAST_API_URL
-  
-  // Only attempt API if URL is configured and not a placeholder
-  if (apiUrl && !apiUrl.includes('your-') && apiUrl.trim().length > 0) {
-    try {
-      console.log('Sending to API:', apiUrl)
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          image: capturedImage.value
-        })
-      })
-      
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
-      }
-      
-      const data = await response.json()
-      console.log('API Response:', data)
-      handleRoastReceived(data)
-      
-    } catch (error) {
-      console.error('Error sending to API:', error)
-      console.log('API failed, attempting to load mock data...')
-      
-      // Fallback to mock data
-      const { loadMockData } = useMockRoast()
-      const mockResponse = await loadMockData()
-      
-      if (mockResponse) {
-        console.log('Mock data loaded successfully')
-        handleRoastReceived(mockResponse)
-      } else {
-        console.error('Failed to load mock data from file')
-        isAnalyzing.value = false
-        audioError.value = 'Failed to generate roast. Please check your API configuration.'
-      }
-    }
-  } else {
-    // No API URL configured, use mock directly
-    console.log('No API URL configured, using mock data')
-    const { loadMockData } = useMockRoast()
-    const mockResponse = await loadMockData()
-    
-    if (mockResponse) {
-      console.log('Mock data loaded successfully')
-      handleRoastReceived(mockResponse)
-    } else {
-      console.error('Failed to load mock data')
-      isAnalyzing.value = false
-      audioError.value = 'Failed to load roast data. Please configure VITE_ROAST_API_URL or place mock/output.txt'
-    }
-  }
+  await fetchRoast()
 }
 
 async function toggleAudio() {
@@ -686,6 +820,12 @@ async function startAudioPlayback() {
   }
   
   try {
+    // The context may have been created outside a click (or suspended by
+    // the browser); Play is a click, so resuming here is allowed
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume()
+    }
+
     audioSource = audioContext.createBufferSource()
     audioSource.buffer = audioBuffer
 
@@ -707,6 +847,7 @@ async function startAudioPlayback() {
     // Mark as playing before starting to avoid race conditions
     audioState = AUDIO_STATES.PLAYING
     isPlaying.value = true
+    awaitingFirstPlay.value = false
     
     // Notify sync controller that audio is playing
     setSyncPlaying(true)
@@ -832,14 +973,8 @@ function updateProgress() {
   if (isPlaying.value && audioContext) {
     currentTime.value = audioContext.currentTime - startTime
     
-    // Update animation sync controller
-    const syncState = updateSync(currentTime.value)
-    if (syncState) {
-      // Emit animation state update to ComedyClubScene
-      console.log(`✅ [updateProgress] Sync state returned: animation="${syncState.animation}", expression="${syncState.expression}"`)
-    } else {
-      console.log(`❌ [updateProgress] No sync state at ${currentTime.value.toFixed(2)}s`)
-    }
+    // Drives the animation/expression props passed to ComedyClubScene
+    updateSync(currentTime.value)
     
     if (currentTime.value < duration.value) {
       animationFrameId = requestAnimationFrame(updateProgress)
@@ -918,6 +1053,11 @@ async function resumeAudio() {
 }
 
 function reset() {
+  roastRequestId++
+  roastNotice.value = null
+  roastError.value = null
+  quotaError.value = null
+
   // Clean up audio source
   if (audioSource) {
     try {
@@ -956,5 +1096,6 @@ function reset() {
   startTime = 0
   showRoastModal.value = false
   showPhotoModal.value = false
+  awaitingFirstPlay.value = false
 }
 </script>

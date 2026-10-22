@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed inset-0 flex flex-col items-center justify-center pointer-events-auto z-10">
+  <div class="fixed inset-0 flex flex-col items-center justify-center pointer-events-auto z-10 px-4">
     <!-- Camera View with CCTV Overlay -->
     <div class="relative w-full max-w-2xl rounded-lg">
       <!-- Viewfinder Frame -->
@@ -10,69 +10,155 @@
           <div class="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-red-500"></div>
           <div class="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-red-500"></div>
         </div>
-        
+
         <!-- CCTV Style Label -->
-        <div class="absolute top-4 left-4 bg-red-600 px-3 py-1 text-white text-xs font-mono">
+        <div v-if="!previewImage" class="absolute top-4 left-4 bg-red-600 px-3 py-1 text-white text-xs font-mono">
           <span class="inline-block w-2 h-2 bg-white rounded-full mr-2 animate-pulse"></span>
           REC
         </div>
-        
+        <div v-else class="absolute top-4 left-4 bg-yellow-600 px-3 py-1 text-white text-xs font-mono">
+          YOUR PHOTO
+        </div>
+
+        <!-- Countdown -->
+        <div v-if="countdown > 0" class="absolute inset-0 flex items-center justify-center">
+          <span :key="countdown" class="text-white text-8xl font-bold drop-shadow-lg countdown-pop">{{ countdown }}</span>
+        </div>
+
         <!-- Capture Instructions -->
-        <div class="absolute bottom-4 left-0 right-0 text-center">
+        <div class="absolute bottom-4 left-0 right-0 text-center px-4">
           <p class="text-white text-sm bg-black/50 px-4 py-2 inline-block rounded-lg">
-            Position yourself in the frame
+            {{ frameHint }}
           </p>
         </div>
       </div>
-      
+
+      <!-- Review: the exact image that will be sent (not mirrored) -->
+      <img
+        v-if="previewImage"
+        :src="previewImage"
+        alt="Your photo"
+        class="w-full h-auto rounded-lg"
+      />
+
+      <!-- Camera unavailable: explain and offer upload -->
+      <div
+        v-else-if="cameraError"
+        class="w-full aspect-video rounded-lg bg-black/70 flex items-center justify-center p-8"
+      >
+        <p class="text-gray-300 text-sm text-center max-w-sm">{{ cameraError }}</p>
+      </div>
+
       <video
+        v-show="!previewImage && !cameraError"
         ref="videoRef"
         class="w-full h-auto rounded-lg opacity-70"
         autoplay
         playsinline
+        muted
       ></video>
     </div>
-    
-    <!-- Capture Button -->
-    <div class="mt-8 relative z-20">
-      <button
-        @click="captureImage"
-        :disabled="loading"
-        class="relative group"
-      >
-        <!-- Outer Ring -->
-        <div class="w-24 h-24 rounded-full border-4 border-white/50 flex items-center justify-center group-hover:border-red-500 transition-colors">
-          <!-- Inner Button -->
-          <div class="w-16 h-16 rounded-full bg-red-600 group-hover:bg-red-700 transition-colors flex items-center justify-center">
-            <span v-if="loading" class="text-white text-xs">...</span>
-          </div>
-        </div>
-      </button>
-      
-      <p class="text-white text-sm mt-4 text-center">
-        {{ loading ? 'Processing...' : 'Click to capture' }}
+
+    <!-- Review controls -->
+    <div v-if="previewImage" class="mt-8 flex flex-col items-center gap-3 relative z-20">
+      <div class="flex gap-3">
+        <button
+          @click="retake"
+          class="px-5 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+        >
+          ↺ Retake
+        </button>
+        <button
+          @click="confirmPhoto"
+          class="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-colors"
+        >
+          🔥 Roast this photo
+        </button>
+      </div>
+      <p class="text-gray-400 text-xs text-center max-w-xs">
+        Only this single photo gets roasted. The camera turns off once you confirm.
       </p>
     </div>
-    
+
+    <!-- Capture controls -->
+    <div v-else class="mt-8 relative z-20 flex flex-col items-center">
+      <template v-if="!cameraError">
+        <button
+          @click="startCountdown"
+          :disabled="!cameraReady || countdown > 0"
+          class="relative group disabled:opacity-50"
+          aria-label="Take photo"
+        >
+          <!-- Outer Ring -->
+          <div class="w-24 h-24 rounded-full border-4 border-white/50 flex items-center justify-center group-hover:border-red-500 transition-colors">
+            <!-- Inner Button -->
+            <div class="w-16 h-16 rounded-full bg-red-600 group-hover:bg-red-700 transition-colors"></div>
+          </div>
+        </button>
+
+        <p class="text-white text-sm mt-4 text-center">
+          {{ countdown > 0 ? 'Get ready...' : 'Click to take your photo' }}
+        </p>
+        <p class="text-gray-400 text-xs mt-1 text-center max-w-xs">
+          You'll get a 3-second countdown, then a chance to retake.
+        </p>
+      </template>
+
+      <button
+        @click="fileInputRef?.click()"
+        :disabled="countdown > 0"
+        :class="cameraError
+          ? 'px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg'
+          : 'mt-3 text-gray-400 hover:text-white text-xs underline'"
+        class="transition-colors"
+      >
+        {{ cameraError ? '📁 Upload a photo' : 'or upload a photo instead' }}
+      </button>
+      <p v-if="uploadError" class="text-red-400 text-xs mt-2 text-center max-w-xs">{{ uploadError }}</p>
+    </div>
+
+    <input
+      ref="fileInputRef"
+      type="file"
+      accept="image/*"
+      class="hidden"
+      @change="handleFileSelected"
+    />
+
     <!-- Hidden Canvas -->
     <canvas ref="canvasRef" class="hidden"></canvas>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, defineEmits } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+
+// Uploads are scaled down to this before sending. The backend resizes to
+// 1024 anyway, so anything bigger only costs upload time.
+const MAX_UPLOAD_DIMENSION = 1280
+const COUNTDOWN_SECONDS = 3
 
 const videoRef = ref(null)
 const canvasRef = ref(null)
-const loading = ref(false)
+const fileInputRef = ref(null)
+const cameraReady = ref(false)
+const cameraError = ref(null)
+const uploadError = ref(null)
+const countdown = ref(0)
+const previewImage = ref(null)
 let stream = null
+let countdownTimer = null
 
-const emit = defineEmits(['imageCaptured', 'roastReceived'])
-const { loadMockData } = useMockRoast()
+const emit = defineEmits(['imageCaptured'])
+
+const frameHint = computed(() => {
+  if (previewImage.value) return 'This is the photo that will be roasted'
+  if (cameraError.value) return 'No camera? Upload a photo instead'
+  return 'Position yourself in the frame, then snap one photo'
+})
 
 onMounted(async () => {
   try {
-    // Request camera access
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: 'user', // Front camera
@@ -81,17 +167,21 @@ onMounted(async () => {
       },
       audio: false
     })
-    
+
     if (videoRef.value) {
+      videoRef.value.onloadedmetadata = () => { cameraReady.value = true }
       videoRef.value.srcObject = stream
     }
   } catch (error) {
-    console.error('Error accessing camera:', error)
-    alert('Unable to access camera. Please grant camera permissions.')
+    console.warn('Camera unavailable:', error)
+    cameraError.value = error?.name === 'NotAllowedError'
+      ? 'Camera access was blocked. Allow it in your browser settings and reload, or upload a photo instead.'
+      : "We couldn't open a camera on this device. You can upload a photo instead."
   }
 })
 
 onBeforeUnmount(() => {
+  clearInterval(countdownTimer)
   stopCamera()
 })
 
@@ -102,165 +192,88 @@ function stopCamera() {
   }
 }
 
-async function captureImage() {
-  if (!videoRef.value || !canvasRef.value || loading.value) return
-  
-  loading.value = true
-  
-  try {
-    const video = videoRef.value
-    const canvas = canvasRef.value
-    
-    // Set canvas size to match video
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    
-    // Draw current video frame to canvas
-    const ctx = canvas.getContext('2d')
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-    
-    // Convert to base64
-    const base64Image = canvas.toDataURL('image/jpeg', 0.9)
-    
-    // Send to API
-    await sendToAPI(base64Image)
-    
-    emit('imageCaptured', base64Image)
-  } catch (error) {
-    console.error('Error capturing image:', error)
-    alert('Failed to capture image. Please try again.')
-  } finally {
-    loading.value = false
-  }
+function startCountdown() {
+  if (!cameraReady.value || countdown.value > 0) return
+  uploadError.value = null
+  countdown.value = COUNTDOWN_SECONDS
+  countdownTimer = setInterval(() => {
+    countdown.value -= 1
+    if (countdown.value <= 0) {
+      clearInterval(countdownTimer)
+      countdownTimer = null
+      captureFrame()
+    }
+  }, 1000)
 }
 
-async function sendToAPI(base64Image) {
-  try {
-    // Use environment variable if properly configured
-    const apiUrl = import.meta.env.VITE_ROAST_API_URL
-    
-    // Only attempt API if URL is configured and not a placeholder
-    if (!apiUrl || apiUrl.includes('your-') || apiUrl.trim().length === 0) {
-      throw new Error('API endpoint not configured, using mock')
-    }
-    
-    console.log('Sending to API:', apiUrl)
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        image: base64Image
-      })
-    })
-    
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`)
-    }
-    
-    const data = await response.json()
-    console.log('API Response:', data)
-    
-    // Emit the response data
-    emit('roastReceived', data)
-    
-  } catch (error) {
-    console.error('Error sending to API:', error)
-    console.log('API failed or not configured, loading mock data...')
-    
-    // Load actual mock data from file
-    const mockResponse = await loadMockData()
-    
-    if (mockResponse) {
-      console.log('Mock data loaded successfully')
-      console.log('Audio field exists:', !!mockResponse.audio)
-      console.log('Audio length:', mockResponse.audio?.length || 0)
-      console.log('🎥 CameraCapture - About to emit mockResponse')
-      console.log('🎥 mockResponse type:', typeof mockResponse)
-      console.log('🎥 mockResponse keys:', mockResponse ? Object.keys(mockResponse) : 'null')
-      console.log('🎥 mockResponse.animationScript exists?', !!mockResponse?.animationScript)
-      if (mockResponse?.animationScript) {
-        console.log('🎥   - animationScript.timeline length:', mockResponse.animationScript.timeline?.length)
-      }
-      console.log('🎥 mockResponse structure:', {
-        hasAnimationScript: !!mockResponse?.animationScript,
-        hasAudio: !!mockResponse?.audio,
-        hasAudioMimeType: !!mockResponse?.audioMimeType,
-        hasData: !!mockResponse?.data,
-        hasSuccess: mockResponse?.success !== undefined
-      })
-      console.log('🎥 About to emit event with mockResponse')
-      emit('roastReceived', mockResponse)
-      console.log('🎥 roastReceived event emitted')
-      console.log('🎥 Object.keys(mockResponse) after emit:', Object.keys(mockResponse))
-    } else {
-      console.error('Failed to load mock data from file')
-      // Fallback mock response if file loading fails
-      const fallbackResponse = {
-        animationScript: {
-          metadata: {
-            duration: 109.6,
-            fallback: true,
-            intensity: "medium",
-            notes: "Generated using fallback pattern (state machine compliant)",
-            style: "comedic",
-            transcript: "You look like a Muppet that's been through a dryer on the 'high heat' setting for three days straight."
-          },
-          timeline: [
-            {
-              animation: "idle",
-              endTime: 21.92,
-              expression: "neutral",
-              intensity: 0.4,
-              notes: "Opening - neutral stance, setting up for performance",
-              startTime: 0
-            },
-            {
-              animation: "walk-think",
-              endTime: 49.32,
-              expression: "smile",
-              intensity: 0.6,
-              notes: "Building - contemplative movement, engaging audience",
-              startTime: 21.92
-            },
-            {
-              animation: "spellcast",
-              endTime: 76.72,
-              expression: "laugh",
-              intensity: 0.9,
-              notes: "Climax - high energy gesture with dramatic emphasis",
-              startTime: 49.32
-            },
-            {
-              animation: "aerobic-dance",
-              endTime: 93.16,
-              expression: "laugh",
-              intensity: 0.8,
-              notes: "Peak energy - celebrating the comedic moment",
-              startTime: 76.72
-            },
-            {
-              animation: "relax",
-              endTime: 109.6,
-              expression: "smile",
-              intensity: 0.5,
-              notes: "Closing - settling down with satisfied expression",
-              startTime: 93.16
-            }
-          ]
-        },
-        audio: null,
-        audioMimeType: "audio/L16;codec=pcm;rate=24000"
-      }
-      emit('roastReceived', fallbackResponse)
-    }
+function captureFrame() {
+  const video = videoRef.value
+  const canvas = canvasRef.value
+  if (!video || !canvas) return
+
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+  previewImage.value = canvas.toDataURL('image/jpeg', 0.9)
+}
+
+function retake() {
+  previewImage.value = null
+  uploadError.value = null
+}
+
+function confirmPhoto() {
+  if (!previewImage.value) return
+  // The parent unmounts this component as soon as it has a photo, which
+  // stops the camera (onBeforeUnmount)
+  emit('imageCaptured', previewImage.value)
+}
+
+/**
+ * Load an uploaded file, scale it down and re-encode it as JPEG, so any
+ * format the browser can decode is sent the same way as a camera snapshot.
+ */
+function handleFileSelected(event) {
+  const file = event.target.files?.[0]
+  event.target.value = '' // lets the same file be chosen again
+  if (!file) return
+  uploadError.value = null
+
+  if (!file.type.startsWith('image/')) {
+    uploadError.value = "That file isn't an image."
+    return
   }
+
+  const url = URL.createObjectURL(file)
+  const img = new Image()
+  img.onload = () => {
+    const scale = Math.min(1, MAX_UPLOAD_DIMENSION / Math.max(img.width, img.height))
+    const canvas = canvasRef.value
+    canvas.width = Math.round(img.width * scale)
+    canvas.height = Math.round(img.height * scale)
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+    previewImage.value = canvas.toDataURL('image/jpeg', 0.9)
+    URL.revokeObjectURL(url)
+  }
+  img.onerror = () => {
+    URL.revokeObjectURL(url)
+    uploadError.value = "Couldn't read that image. Try a JPEG or PNG."
+  }
+  img.src = url
 }
 </script>
 
 <style scoped>
 video {
   transform: scaleX(-1); /* Mirror the video for selfie effect */
+}
+
+@keyframes countdown-pop {
+  0% { transform: scale(1.4); opacity: 0; }
+  30% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.8; }
+}
+.countdown-pop {
+  animation: countdown-pop 0.9s ease-out;
 }
 </style>

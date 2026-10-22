@@ -14,6 +14,7 @@ if __name__ != "__main__":
 
 from google.genai import types
 import config
+from utils.gemini_errors import as_quota_error
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,10 @@ def generate_tts_audio(client, text):
         
     Returns:
         str or None: Base64-encoded audio data, or None if generation fails
+
+    Raises:
+        QuotaExceededError: If the API key's quota is used up, so the caller
+            can tell the user why there's no audio
     """
     try:
         logger.info("Generating TTS audio")
@@ -74,6 +79,10 @@ def generate_tts_audio(client, text):
         return audio_base64
 
     except Exception as e:
+        quota_error = as_quota_error(e)
+        if quota_error:
+            logger.warning(f"Gemini quota exceeded during TTS: {e}")
+            raise quota_error from e
         logger.exception(f"TTS generation failed: {e}")
         return None
 
@@ -143,6 +152,30 @@ def _save_test_audio_files(audio_base64):
             
     except Exception as e:
         logger.warning(f"Failed to save/decode audio file: {e}")
+
+
+def get_audio_duration(audio_base64):
+    """
+    Measure the length of TTS audio in seconds.
+
+    Gemini TTS returns raw 16-bit mono PCM, so duration is just
+    bytes / 2 / sample rate.
+
+    Args:
+        audio_base64: Base64-encoded PCM audio
+
+    Returns:
+        float or None: Duration in seconds, or None if it can't be measured
+    """
+    if not audio_base64:
+        return None
+    try:
+        num_bytes = len(base64.b64decode(audio_base64))
+    except Exception as e:
+        logger.warning(f"Could not decode audio to measure duration: {e}")
+        return None
+    duration = num_bytes / 2 / config.TTS_SAMPLE_RATE
+    return duration if duration > 0 else None
 
 
 def get_audio_mime_type():

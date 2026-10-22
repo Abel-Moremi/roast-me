@@ -75,7 +75,7 @@ AVAILABLE_ANIMATIONS: AnimationLibrary = {
         "previous_in_sequence": "walk-relaxed-start",
         "required_sequence_completion": 0.9,  # Must be 90% complete before entering
         "next_in_sequence": "walk-relaxed-end",
-        "can_transition_to": ["walk-relaxed-end", "idle"],
+        "can_transition_to": ["walk-relaxed-end"],
         "use_cases": ["continuous movement"]
     },
     
