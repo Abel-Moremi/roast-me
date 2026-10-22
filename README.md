@@ -105,6 +105,7 @@ functions/               Python Cloud Function: the whole backend
 public/comedian.glb      The 3D character (~29 MB)
 public/mock/             Sample API response + sample request body
 docs-roast-me/           Full documentation (Obsidian vault)
+AGENTS.md                Working rules for contributors and AI agents (CLAUDE.md imports it)
 ```
 
 ## Documentation
@@ -144,9 +145,10 @@ The browser console has debug helpers such as `setAnimationState('spellcast')` a
 
 ## Contributing
 
-1. Fork, then branch (`git checkout -b feature/your-change`).
-2. Keep the docs vault in sync with what you change. If code and docs disagree, the code wins and the note gets fixed.
-3. Open a pull request.
+1. Read [AGENTS.md](AGENTS.md). It has the working rules for humans and AI agents: commands, invariants that are easy to break, and which docs to update for each part of the code.
+2. Fork, then branch (`git checkout -b feature/your-change`). Pushes to `main` deploy to production.
+3. **Update the docs in the same PR as the code.** The `Docs check` workflow fails a PR that changes code without touching any docs. For pure refactors, add the `docs-not-needed` label and say why. It also fails on broken links in the vault.
+4. Open a pull request. The template has the checklist.
 
 Style: Vue Composition API with `<script setup>`, Tailwind for styling, PEP 8 for Python. There's no automated test suite yet; [Testing](docs-roast-me/06%20Development/Testing.md) describes the manual checks.
 

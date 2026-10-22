@@ -7,6 +7,8 @@ Roast Me takes a webcam photo, has Gemini write a stand-up roast about it, turns
 
 These notes were written from the code (October 2026). When a note and the code disagree, trust the code and fix the note.
 
+**Changing code? Update these notes in the same PR.** `AGENTS.md` at the repo root says which notes cover which files, and CI checks that docs changed.
+
 ## Start here
 - [[What is Roast Me]]: what the user sees, step by step
 - [[System Overview]]: the pieces and how they connect

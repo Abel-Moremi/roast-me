@@ -1,0 +1,62 @@
+name: Docs check
+
+# Every code change must update the docs in the same PR (see AGENTS.md).
+# Add the `docs-not-needed` label to a PR to skip the "docs changed" check
+# (e.g. pure refactors); the broken-link check always runs.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Code changes include doc changes
+        if: ${{ !contains(github.event.pull_request.labels.*.name, 'docs-not-needed') }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "Changed files:"
+          echo "$changed"
+
+          # Any Markdown file counts as docs (vault, READMEs, AGENTS.md)
+          docs=$(echo "$changed" | grep -E '\.md$' || true)
+
+          # Code and config that the docs describe
+          code=$(echo "$changed" | grep -vE '\.md$' | grep -E \
+            '^(app\.vue|components/|composables/|functions/|public/|assets/|nuxt\.config\.ts|firebase\.json|package\.json|\.github/workflows/)' \
+            | grep -vE '^\.github/workflows/docs-check\.yml$' || true)
+
+          if [ -n "$code" ] && [ -z "$docs" ]; then
+            echo "::error::Code changed but no docs did. Update the affected notes in docs-roast-me/ (see the table in AGENTS.md), or add the 'docs-not-needed' label with a reason in the PR description."
+            echo "Code files changed:"
+            echo "$code"
+            exit 1
+          fi
+          echo "✅ Docs check passed"
+
+      - name: No broken wikilinks in the vault
+        run: |
+          cd docs-roast-me
+          python3 - <<'EOF'
+          import pathlib, re, sys
+          notes = {p.stem for p in pathlib.Path('.').rglob('*.md')}
+          broken = [
+              (str(p), link)
+              for p in pathlib.Path('.').rglob('*.md')
+              for link in re.findall(r'\[\[([^\]|#]+)', p.read_text(encoding='utf-8'))
+              if link not in notes
+          ]
+          for path, link in broken:
+              print(f"::error file=docs-roast-me/{path}::Broken wikilink [[{link}]]")
+          sys.exit(1 if broken else 0)
+          EOF

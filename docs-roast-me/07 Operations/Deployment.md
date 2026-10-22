@@ -3,7 +3,7 @@ tags: [operations]
 ---
 # Deployment
 
-Two GitHub Actions workflows, both run on push to `main` (filtered by path) or by hand (`workflow_dispatch`). Both deploy to the GCP project `fun-series-gcloud`.
+Two GitHub Actions workflows deploy, both on push to `main` (filtered by path) or by hand (`workflow_dispatch`), to the GCP project `fun-series-gcloud`. A third, `docs-check.yml`, only checks pull requests (see below).
 
 ## Backend: `.github/workflows/deploy-cloud-function.yml`
 **Triggers on:** `functions/**` or the workflow file.
@@ -26,6 +26,13 @@ gcloud functions deploy roast_me --gen2 --runtime python310 --trigger-http \
 Steps: Node 20 → `npm ci` → `npm run generate` with `VITE_ROAST_API_URL` from the `ROAST_API_URL` secret → warn if that secret is empty → deploy `dist/` to the Firebase Hosting `live` channel.
 
 `VITE_ROAST_API_URL` is baked in at build time. **Changing the API URL means re-running this workflow.**
+
+## PR check: `.github/workflows/docs-check.yml`
+Runs on every pull request (and when its labels change). Two steps:
+1. **Code changes include doc changes.** If the PR changes code or config (`app.vue`, `components/`, `composables/`, `functions/`, `public/`, `assets/`, `nuxt.config.ts`, `firebase.json`, `package.json`, `.github/workflows/`) but no `.md` file, it fails. The `docs-not-needed` label skips this step.
+2. **No broken wikilinks** in `docs-roast-me/`. Always runs.
+
+This enforces Rule #1 in `AGENTS.md`. It only checks *that* docs changed, not that they're right; the PR template checklist and review cover that. It doesn't block a direct push to `main`. Turn on branch protection requiring this check if you want it enforced there too.
 
 ## Secrets
 | Secret | Used by | What |

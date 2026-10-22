@@ -3,7 +3,7 @@ tags: [development, testing]
 ---
 # Testing
 
-**There is no automated test suite.** No test runner, no CI test step. What exists are three manual scripts:
+**There is no automated test suite.** No test runner, and the only CI check is the docs check on pull requests ([[Deployment]]). What exists are three manual scripts:
 
 | Script | Run with | Checks |
 | --- | --- | --- |
@@ -12,6 +12,8 @@ tags: [development, testing]
 | `functions/test_imports.py` | `python functions/test_imports.py` | The backend files exist and import from the expected paths |
 
 `functions/.gcloudignore` excludes `test_*.py` from deploys.
+
+The "Checks before you finish" list in `AGENTS.md` is the agreed minimum for any change, including a one-line command to find broken vault links.
 
 ## Checking a change by hand
 1. Backend logic without Gemini: the animation code (`animation_utils`, `animation_validator`, `animation_constants`) has no Gemini imports and can be called directly from Python in `functions/`. For example, validate a timeline with `validate_animation_script(script, duration)`.
