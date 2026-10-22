@@ -25,6 +25,12 @@ TTS_AUDIO_MIME_TYPE = "audio/L16;codec=pcm;rate=24000"
 # Testing
 ENABLE_AUDIO_TEST = os.environ.get("ENABLE_AUDIO_TEST", "").lower() == "true"
 
+# Rate limiting
+# Roasts allowed per client IP per hour, counted in each instance's memory.
+# 0 turns it off. Not shared between instances, so the real limit is this
+# times the number of running instances (capped by --max-instances on deploy).
+RATE_LIMIT_PER_HOUR = int(os.environ.get("RATE_LIMIT_PER_HOUR", "20"))
+
 # CORS Configuration
 # Comma-separated list of origins allowed to call the function, e.g.
 # "https://fun-series-gcloud.web.app,http://localhost:3000".

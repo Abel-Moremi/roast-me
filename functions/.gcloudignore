@@ -17,3 +17,6 @@ test_*.py
 .env.local
 *.wav
 *.mp3
+
+# Tests (run locally, not needed at runtime)
+tests/

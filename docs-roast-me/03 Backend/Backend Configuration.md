@@ -10,6 +10,7 @@ Read with `os.environ` in `functions/config.py`. **No `.env` file is loaded**: l
 | --- | --- | --- | --- |
 | `GEMINI_API_KEY` | yes | none | Without it every request returns `500 Server is not configured`. |
 | `ENABLE_AUDIO_TEST` | no | off | `true` saves each TTS clip to `functions/temp/`. See [[Text to Speech]]. |
+| `RATE_LIMIT_PER_HOUR` | no | `20` | Roasts allowed per client IP per hour, per instance. `0` disables. See [[Entry Point & Errors]]. |
 | `ALLOWED_ORIGINS` | no | `*` | Comma-separated list of origins allowed by CORS, e.g. `https://fun-series-gcloud.web.app,http://localhost:3000`. |
 
 ## Constants in `functions/config.py`
@@ -33,4 +34,4 @@ Read with `os.environ` in `functions/config.py`. **No `.env` file is loaded**: l
 `functions/requirements.txt` pins everything. The main ones: `google-genai` 1.58.0, `functions-framework` 3.10.0, `Flask` 3.1.2, `pillow` 12.1.0. The runtime is Python 3.10 (set in the deploy workflow).
 
 ## Import quirk
-`roast_service.py`, `tts_service.py` and `animation_service.py` add `functions/` to `sys.path` so `import config` works whether they're imported as a package or run directly. `functions/test_imports.py` checks this layout.
+`roast_service.py`, `tts_service.py` and `animation_service.py` add `functions/` to `sys.path` so `import config` works whether they're imported as a package or run directly. `functions/test_imports.py` checks this layout. `functions/tests/` holds the unit tests (see [[Testing]]); `.gcloudignore` keeps them out of the deploy.

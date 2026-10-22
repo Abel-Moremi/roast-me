@@ -44,6 +44,9 @@ A change isn't done until the docs describe it. Same commit or PR, not "later".
 | `composables/animation/*` | `composables/animation/README.md`, `05 Character & Assets/Animation Catalogue.md`, `04 Frontend/3D Scene.md` |
 | `useBlinking.js`, `useJawMovement.js`, `useMouthAnimation.js` | `04 Frontend/Face & Lip Sync.md` |
 | `useRoastApi.js`, `useMockRoast.js`, `public/mock/*` | `06 Development/Mock Mode.md` |
+| `useSubtitles.js` | `04 Frontend/Audio Playback.md` (and keep it in step with `build_narration_text` in `roast_service.py`) |
+| `functions/utils/rate_limit.py` | `03 Backend/Entry Point & Errors.md`, `07 Operations/Cost & Limits.md` |
+| `functions/tests/*` | `06 Development/Testing.md` |
 | `public/comedian.glb` | `05 Character & Assets/comedian.glb.md` + both catalogues |
 | `.github/workflows/*`, `firebase.json`, deploy settings | `07 Operations/Deployment.md`, `07 Operations/Cost & Limits.md`, README "Deployment" |
 | Setup steps, scripts, dependencies | `06 Development/Local Setup.md`, `06 Development/Testing.md`, README "Quick start" |
@@ -91,7 +94,10 @@ export GEMINI_API_KEY=...   # env vars only; the backend does not read .env
 functions-framework --target roast_me --port 8080
 curl -X POST http://localhost:8080 -H "Content-Type: application/json" -d @public/mock/input.txt
 
-# Manual checks (there is no automated test suite yet)
+# Backend unit tests (standard library only, no API key; also run in CI)
+cd functions && python -m unittest discover -s tests -v
+
+# Manual checks
 node test_mock_structure.js            # mock response shape
 python functions/test_imports.py       # backend layout/imports
 ```
@@ -101,7 +107,7 @@ The animation modules (`animation_utils`, `animation_validator`, `animation_cons
 ## Checks before you finish
 - [ ] Docs updated per Rule #1 (or "no docs needed" stated with a reason).
 - [ ] `npm run generate` succeeds, if you touched frontend code.
-- [ ] `python -m py_compile` on changed Python files, plus a direct call of any animation function you changed.
+- [ ] `python -m py_compile` on changed Python files, and the backend tests pass (`cd functions && python -m unittest discover -s tests`). Add a test for any animation or rate-limit behaviour you change.
 - [ ] Animation or face-shape names checked against the model, if you touched them.
 - [ ] No broken wikilinks in the vault:
   ```bash

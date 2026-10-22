@@ -8,8 +8,9 @@ from flask import jsonify
 from google import genai
 import logging
 
-from config import GEMINI_API_KEY, MAX_IMAGE_DIMENSION, get_cors_headers
+from config import GEMINI_API_KEY, MAX_IMAGE_DIMENSION, RATE_LIMIT_PER_HOUR, get_cors_headers
 from utils.image_utils import parse_image_from_request, resize_image, image_to_bytes
+from utils.rate_limit import RateLimiter, client_ip
 from services.roast_service import generate_roast, build_narration_text
 from services.tts_service import generate_tts_audio, get_audio_duration, get_audio_mime_type
 from services.animation_service import generate_animation_script
@@ -23,6 +24,8 @@ if not GEMINI_API_KEY:
     logger.warning("GEMINI_API_KEY not set")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
+
+rate_limiter = RateLimiter(RATE_LIMIT_PER_HOUR)
 
 
 @functions_framework.http
@@ -52,6 +55,17 @@ def roast_me(request):
                 "Server is not configured",
                 cors_headers,
                 status_code=500
+            )
+
+        # Each roast makes 3 paid Gemini calls, so limit roasts per client
+        allowed, retry_after = rate_limiter.check(client_ip(request))
+        if not allowed:
+            minutes = max(1, round(retry_after / 60))
+            logger.warning("Rate limit hit")
+            return _error_response(
+                f"That's a lot of roasts! Try again in about {minutes} minute{'s' if minutes != 1 else ''}.",
+                {**cors_headers, "Retry-After": str(retry_after)},
+                status_code=429
             )
 
         # Parse and validate image

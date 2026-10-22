@@ -42,6 +42,7 @@ jobs:
             --region us-central1 \
             --memory 2GB \
             --timeout 540 \
+            --max-instances 10 \
             --set-env-vars GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},ENABLE_AUDIO_TEST=false \
             --project fun-series-gcloud \
             --quiet

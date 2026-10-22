@@ -42,7 +42,7 @@ Gemini's reply is parsed by taking everything from the first `{` to the last `}`
 
 ## Sanitize (`sanitize_animation_script`)
 Runs **before** validation, so fixable mistakes are repaired instead of rejected:
-- Animation names go through `fix_invalid_animation_name`: exact valid names are kept, known mistakes are mapped case-insensitively (`walkThink` → `walk-think`, `dance` → `aerobic-dance`, `sit` → `stand-to-sit`, `sit-talk` → `idle`, …), and anything else becomes `idle`.
+- Animation names go through `fix_invalid_animation_name`: exact valid names are kept, known mistakes are mapped case-insensitively (`walkThink` → `walk-think`, `dance` → `aerobic-dance`, `sit` → `stand-to-sit`, `sit-talk` → `idle`, …), then any camelCase name is converted to kebab-case and kept if valid (`walkRelaxedStart` → `walk-relaxed-start`). Anything else becomes `idle`. Covered by `functions/tests/test_animation.py` (see [[Testing]]).
 - Unknown expressions → `neutral`.
 - Intensity clamped to 0–1 (non-numbers → 0.5).
 - Non-dict keyframes dropped. Missing times default to 0, so validation then rejects them.

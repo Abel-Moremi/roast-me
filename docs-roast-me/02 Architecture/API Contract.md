@@ -62,8 +62,11 @@ Any format Pillow can open works. The backend resizes so the longest side is at 
 | 400 | No `image` in the body | `No image provided (base64 JSON or multipart expected)` |
 | 400 | Image can't be decoded | `Invalid image data` (or the base64 decode message) |
 | 400 | Gemini blocked or returned unparseable roast JSON | The `ValueError` message, e.g. `Response blocked by safety filters` |
+| 429 | More than `RATE_LIMIT_PER_HOUR` requests from the same IP in the last hour (per instance) | `That's a lot of roasts! Try again in about N minutes.` Also sets a `Retry-After` header (seconds). |
 | 500 | `GEMINI_API_KEY` not set | `Server is not configured` |
 | 500 | Anything unexpected | `Internal server error` (details only in the Cloud Function logs) |
+
+The frontend shows any 4xx `error` to the user (429 included) and brings the camera back. Only 5xx and network errors fall back to the sample roast.
 
 ## CORS
 `Access-Control-Allow-Origin` comes from the `ALLOWED_ORIGINS` env var (comma-separated). Unset means `*`. See [[Backend Configuration]].

@@ -12,6 +12,7 @@ This module provides utility functions organized into logical groups:
 """
 
 import json
+import re
 import logging
 from typing import Dict, Tuple, Optional, Any
 from .animation_constants import (
@@ -296,7 +297,13 @@ def fix_invalid_animation_name(animation_name: str) -> str:
         fixed = _LOWERCASE_MAPPING[lower_name]
         logger.warning(f"Fixed invalid animation: '{animation_name}' → '{fixed}'")
         return fixed
-    
+
+    # The frontend's camelCase key for a valid name (walkRelaxedStart)
+    kebab_name = re.sub(r"(?<=[a-z0-9])([A-Z])", r"-\1", animation_name.strip()).lower()
+    if is_valid_animation(kebab_name):
+        logger.warning(f"Fixed invalid animation: '{animation_name}' → '{kebab_name}'")
+        return kebab_name
+
     # Unknown animation - default to idle
     logger.warning(f"Unknown animation name: '{animation_name}', defaulting to '{DEFAULT_ANIMATION}'")
     return DEFAULT_ANIMATION

@@ -3,7 +3,24 @@ tags: [development, testing]
 ---
 # Testing
 
-**There is no automated test suite.** No test runner, and the only CI check is the docs check on pull requests ([[Deployment]]). What exists are three manual scripts:
+## Automated tests (backend)
+`functions/tests/`, plain `unittest` (standard library only, no API key, no `pip install`):
+
+```bash
+cd functions
+python -m unittest discover -s tests -v    # pytest also works if you have it
+```
+
+| File | Covers |
+| --- | --- |
+| `test_animation.py` | The fallback script validates for 3–120 s; sit lock and walk-order rules; bad timing; name fixing (camelCase, unknown → `idle`); intensity clamping; sanitize-then-validate; **every backend animation has a matching frontend `ANIMATION_STATES` key and clip, and every backend expression exists in `ComedyClubScene.vue`** (parsed from the source files) |
+| `test_rate_limit.py` | `RateLimiter` window, per-client counting, `0` disables; `client_ip` header handling |
+
+CI runs them on every pull request and push to `main` (`.github/workflows/tests.yml`, see [[Deployment]]). `.gcloudignore` keeps `tests/` out of the deployed function.
+
+There are no frontend tests.
+
+## Manual scripts
 
 | Script | Run with | Checks |
 | --- | --- | --- |
@@ -21,5 +38,5 @@ The "Checks before you finish" list in `AGENTS.md` is the agreed minimum for any
 3. Frontend: `npm run dev` in mock mode, capture, press Play, and watch the console for `Unknown state` / `Clip not found` warnings.
 
 ## Worth adding
-- pytest for `animation_validator` and `animation_utils` (pure functions, easy to test)
-- A unit test that every name in `AVAILABLE_ANIMATIONS` maps to a key in `ANIMATION_STATES` with a clip that exists in the model. This would have caught the animation-name bug. See [[Animation Catalogue]].
+- A check that every `clipName` in `ANIMATION_STATES` exists in `comedian.glb` (needs a GLB parser). The current test stops at the frontend constants. See [[Animation Catalogue]].
+- Frontend unit tests, e.g. for `buildSubtitleCues` and the sync controller.

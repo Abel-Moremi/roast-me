@@ -16,17 +16,19 @@ tags: [operations]
 Check current Gemini pricing for the three models in [[Backend Configuration]]. TTS is usually the most expensive of the three.
 
 ## Function settings
-Gen 2, `us-central1`, 2 GB memory, 540 s timeout. Concurrency and instance limits are not set, so the platform defaults apply.
+Gen 2, `us-central1`, 2 GB memory, 540 s timeout, **`--max-instances 10`**. Concurrency is not set, so the gen 2 default applies. At the cap, extra requests get a platform error, which the frontend treats like a 5xx (sample roast with a notice).
 
 ## Protections (or lack of them)
-- **No authentication and no rate limiting.** Anyone with the URL can make the three paid calls as often as they like.
+- **No authentication.** Anyone with the URL can call it.
+- **Per-IP rate limit:** `RATE_LIMIT_PER_HOUR` (default 20) per instance, kept in memory, so one IP can get at most about 20 × 10 instances per hour. It stops one person hammering the function, not a determined attacker with many IPs. See [[Entry Point & Errors]].
+- **Instance cap:** `--max-instances 10` bounds how many roasts run at once, and so the worst-case spend rate.
 - CORS (`ALLOWED_ORIGINS`) only stops other websites from calling it from a browser. It doesn't stop scripts or curl.
 - No limit on request size beyond the platform's own. Images are shrunk to 1024 px before reaching Gemini.
 
 Cheap first steps:
-1. Add `--max-instances` to the deploy command to cap concurrent spend.
-2. Set a budget alert on the GCP project and a quota on the Gemini API key.
-3. Then consider App Check / Firebase Auth, or a per-IP limit in front of the function.
+1. `--max-instances` and a per-IP limit: done.
+2. Set a budget alert on the GCP project and a quota on the Gemini API key (console settings, not in this repo).
+3. Then consider App Check / Firebase Auth, or a shared rate limit (e.g. Firestore) if the in-memory one isn't enough. Both add GCP resources, so ask first.
 
 ## Model risk
 The three models are **preview** models (`gemini-3-flash-preview`, `gemini-2.5-flash-preview-tts`). Preview models can be renamed, changed or retired. If roasts suddenly fail with model errors, check the model names in `functions/config.py` first.
