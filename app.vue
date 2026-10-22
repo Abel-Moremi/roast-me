@@ -135,12 +135,45 @@
       </div>
       
       <!-- Analyzing State -->
-      <div v-if="isAnalyzing" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50">
-        <div class="bg-black/90 backdrop-blur-md border border-red-900/70 rounded-lg p-6 shadow-2xl w-80">
+      <div v-if="isAnalyzing" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50 w-[calc(100vw-2rem)] max-w-sm">
+        <div class="bg-black/90 backdrop-blur-md border border-red-900/70 rounded-lg p-6 shadow-2xl">
           <div class="flex flex-col items-center gap-4">
-            <div class="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-            <p class="text-red-500 text-lg font-bold text-center">PREPARING YOUR ROAST...</p>
-            <p class="text-gray-400 text-xs text-center">Generating audio and animations (this may take a moment)</p>
+            <div class="flex items-center gap-4 w-full">
+              <img
+                v-if="capturedImage"
+                :src="capturedImage"
+                alt="The snapshot being roasted"
+                class="w-20 h-20 object-cover rounded border-2 border-yellow-600 shrink-0"
+              />
+              <div class="flex-1">
+                <p class="text-red-500 text-lg font-bold leading-tight">PREPARING YOUR ROAST...</p>
+                <p class="text-gray-300 text-xs mt-1">
+                  Only this one snapshot is being roasted. The camera is off.
+                </p>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3 w-full">
+              <div class="w-6 h-6 border-4 border-red-600 border-t-transparent rounded-full animate-spin shrink-0"></div>
+              <p class="text-gray-400 text-xs">
+                Writing the jokes, recording the voice and planning the performance.
+                This can take a minute or more.
+              </p>
+            </div>
+
+            <p class="text-gray-500 text-xs font-mono">Waiting {{ formatTime(analyzingSeconds) }}</p>
+
+            <p class="text-gray-300 text-xs text-center border-t border-red-900/50 pt-3 w-full">
+              Nothing to do while you wait. When it's ready, press
+              <span class="text-white font-bold">▶ Play</span> (bottom right) to start the show.
+            </p>
+
+            <button
+              @click="reset"
+              class="pointer-events-auto text-gray-400 hover:text-white text-xs underline"
+            >
+              Cancel and take a new photo
+            </button>
           </div>
         </div>
       </div>
@@ -210,7 +243,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import { useAnimationAudioSync } from '@/composables/useAnimationAudioSync'
 import { useRoastApi } from '@/composables/useRoastApi'
 import { useLoadingState } from '@/composables/useLoadingState'
@@ -257,6 +290,23 @@ const roastNotice = ref(null) // shown when a sample (mock) roast is used
 let roastRequestId = 0
 const showRoastModal = ref(false)
 const showPhotoModal = ref(false)
+
+// Seconds since the current roast request started, shown in the waiting
+// overlay so a long wait doesn't look like a hang
+const analyzingSeconds = ref(0)
+let analyzingTimer = null
+watch(isAnalyzing, (analyzing) => {
+  clearInterval(analyzingTimer)
+  analyzingTimer = null
+  if (analyzing) {
+    const startedAt = Date.now()
+    analyzingSeconds.value = 0
+    analyzingTimer = setInterval(() => {
+      analyzingSeconds.value = (Date.now() - startedAt) / 1000
+    }, 1000)
+  }
+})
+onBeforeUnmount(() => clearInterval(analyzingTimer))
 const currentTime = ref(0)
 const duration = ref(0)
 

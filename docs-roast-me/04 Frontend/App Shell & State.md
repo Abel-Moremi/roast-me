@@ -12,11 +12,11 @@ tags: [frontend]
 4. `CameraCapture`: only while there is no photo (`v-if="!capturedImage"`). See [[Camera Capture]].
 5. Error banner: when no roast could be produced (`roastError`). A yellow notice (`roastNotice`) shows when the roast is the bundled sample.
 6. Audio panel (bottom-right): when `roastData` is set. Progress bar, ⏪ 10s, Play/Pause, 10s ⏩, Roast Again, Reset.
-7. "Preparing your roast" overlay: while `isAnalyzing`.
+7. "Preparing your roast" overlay: while `isAnalyzing`. Shows the snapshot thumbnail, what the backend is doing, an elapsed-time counter (`analyzingSeconds`), a "press ▶ Play when ready" hint, and a cancel link that calls `reset()`.
 8. Roast modal and photo modal, opened by clicking the frames in the 3D scene.
 
 ## State
-Reactive (`ref`): `capturedImage`, `roastData`, `isAnalyzing`, `roastError`, `roastNotice`, `audioLoading`, `isPlaying`, `audioError`, `currentTime`, `duration`, `showRoastModal`, `showPhotoModal`.
+Reactive (`ref`): `capturedImage`, `roastData`, `isAnalyzing`, `roastError`, `roastNotice`, `audioLoading`, `isPlaying`, `audioError`, `currentTime`, `duration`, `showRoastModal`, `showPhotoModal`, `analyzingSeconds` (updated once a second by an interval that a watcher on `isAnalyzing` starts and clears).
 
 Plain variables, not reactive: the Web Audio objects (`audioContext`, `audioSource`, `audioBuffer`, `audioAnalyser`), timing (`startTime`, `pausedAt`), `animationFrameId`, `isTransitioning`, and `audioState` (`stopped` / `playing` / `paused` / `loading`). See [[Audio Playback]].
 

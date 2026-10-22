@@ -8,8 +8,8 @@ A single-page web app. There are no accounts, pages or routes, just one screen.
 ## User flow
 
 1. **Loading.** A full-screen loader shows while the 3D club and the ~29 MB character model download. See [[Loading Screen]].
-2. **Camera.** The browser asks for camera access. A webcam preview with a capture button appears over the 3D club. See [[Camera Capture]].
-3. **Capture.** On click, the photo appears in a gold frame on the right-hand wall, with a camera flash and a scanning spotlight. A "Preparing your roast" overlay shows while the backend works, which takes several seconds (three Gemini calls in a row).
+2. **Camera.** The browser asks for camera access. A webcam preview with a capture button appears over the 3D club, with a note that only one snapshot is roasted and the camera turns off once it's taken. See [[Camera Capture]].
+3. **Capture.** On click, the photo appears in a gold frame on the right-hand wall, with a camera flash and a scanning spotlight. A "Preparing your roast" overlay shows while the backend works (three Gemini calls in a row, which can take a minute or more). It shows a thumbnail of the snapshot, says only that snapshot is roasted, counts the seconds waited, tells the user to press **Play** when it's ready, and has a **Cancel and take a new photo** link.
 4. **Roast ready.** About 1.5 s after the response arrives (a deliberate pause for comic timing), a second frame appears on the left wall and the audio controls appear bottom-right.
 5. **Performance.** The user presses **Play**. Audio does not autoplay. The comedian:
    - follows a timeline of body animations and expressions picked by Gemini ([[Animation-Audio Sync]])

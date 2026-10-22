@@ -24,7 +24,7 @@ tags: [frontend, threejs]
 
 ## Render loop (`animate`)
 Each frame, in order:
-1. `updateAnimations(delta, audioIntensity)`: body clips + procedural idle sway (breathing, head sway, shoulder bounce). See `composables/animation/useAnimationManager.js` and its README. The sway currently overrides the clips on those bones; see [[Known Issues]].
+1. `updateAnimations(delta, audioIntensity)`: body clips + procedural idle sway (breathing, head sway, shoulder bounce). See `composables/animation/useAnimationManager.js` and its README. The sway is added on top of the clip pose (last frame's offset is removed before the mixer runs), so it doesn't replace the clips' motion.
 2. `updateFacialExpression(delta)`: **resets every face shape to its baseline**, then blends the current and target expression.
 3. `updateBlinking`
 4. `updateLipSync()`: only while audio plays.

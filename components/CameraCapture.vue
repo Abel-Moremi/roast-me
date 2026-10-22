@@ -20,7 +20,7 @@
         <!-- Capture Instructions -->
         <div class="absolute bottom-4 left-0 right-0 text-center">
           <p class="text-white text-sm bg-black/50 px-4 py-2 inline-block rounded-lg">
-            Position yourself in the frame
+            Position yourself in the frame, then snap one photo
           </p>
         </div>
       </div>
@@ -50,7 +50,10 @@
       </button>
       
       <p class="text-white text-sm mt-4 text-center">
-        {{ loading ? 'Processing...' : 'Click to capture' }}
+        {{ loading ? 'Processing...' : 'Click to take your photo' }}
+      </p>
+      <p class="text-gray-400 text-xs mt-1 text-center max-w-xs">
+        Only this single snapshot gets roasted. The camera turns off once it's taken.
       </p>
     </div>
     

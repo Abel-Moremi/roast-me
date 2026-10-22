@@ -7,8 +7,8 @@ Found by reading the code (October 2026). Remove items as they're fixed and add 
 
 ## Bugs
 
-### Idle sway overrides the clips' upper-body motion
-`applyBreathing`, `applyHeadSway` and `applyShoulderBounce` in `composables/animation/useAnimationManager.js` set the chest, head and shoulder bones to an **absolute** rotation every frame: the rotation at load time plus a sine offset. That runs after the mixer, so on those axes (chest x, head z, shoulders x) whatever the playing clip does is replaced by the bind pose plus the sway. The upper body probably looks stiffer than the clips intend. Fix: add the offset to the clip's current rotation instead of the stored base rotation. Seen in the code, not yet checked in a browser.
+### Build output is tracked in git
+13 files under `.output/` are committed, even though `.output` is in `.gitignore` (they were added before the ignore rule). Every `npm run generate` shows them as changed. Fix: `git rm -r --cached .output`. Check first that no deploy step relies on the committed copy.
 
 ## Gaps
 - **No auth or rate limiting** on a function that makes 3 paid calls per request. See [[Cost & Limits]].
@@ -25,6 +25,10 @@ Found by reading the code (October 2026). Remove items as they're fixed and add 
 
 ## Fixed (October 2026)
 For reference. Docs: `README.md` and `composables/animation/README.md` rewritten from the code to match this vault.
+
+Third round:
+- Users couldn't tell that only the snapshot was roasted or what to do while waiting. The camera screen and the waiting overlay now say so, show the snapshot and the time waited, point to **Play**, and allow cancelling.
+- The idle sway (breathing, head sway, shoulder bounce) replaced the clips' upper-body rotation with the load-time pose. It's now added on top of the clip pose.
 
 Second round:
 - Facial expressions matched no face shapes. They now use the model's real names, looked up exactly.

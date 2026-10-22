@@ -76,7 +76,7 @@ What the scene does: after loading it plays `relax` and locks it. Every time the
 | headSway | head | 0.6 Hz | 0.03 rad | z |
 | shoulderBounce | shoulderL, shoulderR | 0.4 Hz | 0.02 rad | x |
 
-Each sets the bone's rotation to *its rotation at load time + the sine offset*. Because it's absolute, it **replaces** whatever the playing clip does to those bones on that axis (see Known Issues in the docs vault). Turn a movement off with `enabled: false`.
+The sway is additive: `applyProceduralOverrides` adds the sine offset on top of whatever rotation the playing clip left on the bone, so the clip's motion is kept. Each frame `update()` first calls `removeProceduralOffsets` to undo the previous frame's offsets *before* `mixer.update()`; otherwise bones the clip doesn't animate would accumulate the offset and drift. Turn a movement off with `enabled: false`.
 
 `BONE_MAP` maps the short names to the model's `CC_Base_*` bones. Several candidates are allowed, and the first one found wins.
 
