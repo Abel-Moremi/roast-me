@@ -39,3 +39,4 @@ In order:
 ```
 {overall_vibe}. {roast_lines joined by spaces} And here's the best part: {one_liner}
 ```
+The frontend subtitles split the audio into these same pieces (see [[Audio Playback]]). If you change this format, change `composables/useSubtitles.js` too.

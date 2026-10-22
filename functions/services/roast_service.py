@@ -201,6 +201,9 @@ def generate_roast(client, image_bytes):
 def build_narration_text(roast_data):
     """
     Build narration text from roast data for TTS.
+
+    The frontend's subtitles (composables/useSubtitles.js) split the audio
+    into these same pieces, so keep the two in step.
     
     Args:
         roast_data: Dict containing roast information

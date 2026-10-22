@@ -78,6 +78,7 @@ curl -X POST http://localhost:8080 -H "Content-Type: application/json" -d @publi
 | --- | --- | --- | --- |
 | `GEMINI_API_KEY` | backend | yes | Gemini API key |
 | `ALLOWED_ORIGINS` | backend | no | Comma-separated CORS origins. Defaults to `*`. |
+| `RATE_LIMIT_PER_HOUR` | backend | no | Roasts per client IP per hour, per function instance. Defaults to `20`; `0` turns it off. |
 | `ENABLE_AUDIO_TEST` | backend | no | `true` saves each generated clip to `functions/temp/` as base64 and WAV |
 | `VITE_ROAST_API_URL` | frontend build | no | Cloud Function URL. Unset means sample roast only. |
 
@@ -88,20 +89,22 @@ Models, voice, prompt and limits are set in [`functions/config.py`](functions/co
 ```
 app.vue                  App shell: state, API call, audio playback, overlays
 components/
-  CameraCapture.vue      Webcam preview + capture
+  CameraCapture.vue      Webcam preview, countdown, retake, photo upload
   ComedyClubScene.vue    Three.js club, character, facial expressions
   LoadingScreen.vue      Loader shown until the 3D model is ready
 composables/
   useRoastApi.js         Send photo to API, fall back to sample roast
   useAnimationAudioSync.js  Audio time -> current animation/expression
   useBlinking.js, useJawMovement.js, useMouthAnimation.js  Face animation
+  useSubtitles.js        Subtitles for the roast being played
   useLoadingState.js, useMockRoast.js
   animation/             Body animation manager (clips, bones, idle sway)
 functions/               Python Cloud Function: the whole backend
   main.py                HTTP entry point
   config.py              Models, prompt, schema, CORS
   services/              Roast, TTS and animation-timeline generation
-  utils/                 Image handling, PCM-to-WAV helper
+  utils/                 Image handling, rate limiting, PCM-to-WAV helper
+  tests/                 Backend unit tests (unittest, no API key needed)
 public/comedian.glb      The 3D character (~29 MB)
 public/mock/             Sample API response + sample request body
 docs-roast-me/           Full documentation (Obsidian vault)
@@ -123,12 +126,14 @@ Pushing to `main` deploys automatically:
 
 | Workflow | Triggers on | Does |
 | --- | --- | --- |
-| `deploy-cloud-function.yml` | `functions/**` | `gcloud functions deploy roast_me` (gen 2, Python 3.10, `us-central1`, 2 GB, 540 s timeout) |
+| `deploy-cloud-function.yml` | `functions/**` | `gcloud functions deploy roast_me` (gen 2, Python 3.10, `us-central1`, 2 GB, 540 s timeout, max 10 instances) |
 | `deploy-firebase.yml` | frontend files (`app.vue`, `components/`, `composables/`, `public/`, config) | `npm run generate` → Firebase Hosting |
 
 Required GitHub secrets: `GCP_SA_KEY` (service-account JSON), `GEMINI_API_KEY`, and `ROAST_API_URL` (the function URL, passed to the build as `VITE_ROAST_API_URL`). Details: [Deployment](docs-roast-me/07%20Operations/Deployment.md).
 
-> ⚠️ The function has no authentication or rate limiting, and every roast makes three paid Gemini calls. See [Cost & Limits](docs-roast-me/07%20Operations/Cost%20&%20Limits.md) before sharing the URL widely.
+Pull requests also run the backend tests (`tests.yml`) and the docs check (`docs-check.yml`).
+
+> ⚠️ The function has no authentication, and every roast makes three paid Gemini calls. It's protected only by a per-IP limit kept in each instance's memory and a cap of 10 instances. See [Cost & Limits](docs-roast-me/07%20Operations/Cost%20&%20Limits.md) before sharing the URL widely.
 
 ## Troubleshooting
 
@@ -136,9 +141,11 @@ Required GitHub secrets: `GCP_SA_KEY` (service-account JSON), `GEMINI_API_KEY`, 
 | --- | --- |
 | The same roast every time, with a yellow "sample roast" notice | `ROAST_API_URL` secret missing at build time, or the function is down or returning 5xx. Check the function logs: `gcloud functions logs read roast_me --region us-central1`. |
 | "Roast failed: …" banner | The API rejected the photo (unreadable image, or Gemini's safety filters). The message says which. |
-| Camera doesn't start | The page must be on HTTPS or `localhost`, and camera permission must be granted. |
+| "That's a lot of roasts! Try again in about N minutes." | The per-IP rate limit (`RATE_LIMIT_PER_HOUR`) was hit. |
+| Camera doesn't start | The page must be on HTTPS or `localhost`, and camera permission must be granted. Users can upload a photo instead. |
 | Loader says "The comedian missed his cue" | `comedian.glb` failed to download. Check the network tab and reload. |
 | No Play button after a roast | Text-to-speech failed. The roast is still shown, so check the function logs. |
+| Roast doesn't start by itself | The browser blocked autoplay. The Play button pulses; pressing it starts the show. |
 | `Server is not configured` (500) | `GEMINI_API_KEY` isn't set for the function. |
 
 The browser console has debug helpers such as `setAnimationState('spellcast')` and `debugMouth()` in dev builds. See [3D Scene](docs-roast-me/04%20Frontend/3D%20Scene.md).
@@ -150,7 +157,7 @@ The browser console has debug helpers such as `setAnimationState('spellcast')` a
 3. **Update the docs in the same PR as the code.** The `Docs check` workflow fails a PR that changes code without touching any docs. For pure refactors, add the `docs-not-needed` label and say why. It also fails on broken links in the vault.
 4. Open a pull request. The template has the checklist.
 
-Style: Vue Composition API with `<script setup>`, Tailwind for styling, PEP 8 for Python. There's no automated test suite yet; [Testing](docs-roast-me/06%20Development/Testing.md) describes the manual checks.
+Style: Vue Composition API with `<script setup>`, Tailwind for styling, PEP 8 for Python. Backend tests: `cd functions && python -m unittest discover -s tests -v` (standard library only). There are no frontend tests yet. See [Testing](docs-roast-me/06%20Development/Testing.md).
 
 ## License
 

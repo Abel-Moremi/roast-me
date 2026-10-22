@@ -33,4 +33,15 @@ The 24 kHz rate is hard-coded here and must match `TTS_SAMPLE_RATE` in [[Backend
 `handleAudioEnded` resets the position to 0, sets the sync animation to `idle` and stops the progress loop.
 
 ## Autoplay
-Playback starts only when the user clicks Play. The `AudioContext` is created on that first click, so browser autoplay rules are satisfied without an explicit `resume()`.
+Browsers only let audio start after a user gesture. The click that confirms the photo (or Roast Again) calls `unlockAudio()`, which creates or resumes the `AudioContext` during that click. When the roast arrives, `autoPlayWhenReady()` calls `playAudio()` if the context is `running`.
+
+If the browser still blocked it (context `suspended`), nothing plays and `awaitingFirstPlay` makes the Play button pulse with a "Press ▶ Play" hint. `startAudioPlayback()` resumes a suspended context before every start, which is allowed because Play is a click.
+
+## Subtitles
+`composables/useSubtitles.js`. The response has no per-line timing, so `buildSubtitleCues(roast, duration)` estimates it:
+1. Splits the narration into the pieces `build_narration_text()` speaks: `overall_vibe`, each roast line, `"And here's the best part: " + one_liner` (see [[Roast Generation]]). **Keep the two in step.**
+2. Gives each piece a share of the audio proportional to its length plus `PAUSE_WEIGHT` (12 characters, for the pause between sentences).
+
+`currentSubtitle` is the cue containing `currentTime` (none at 0, i.e. before play and after the end). The timing is an estimate and can drift by a second or two when the voice speeds up or pauses. On the 85.8 s sample it produces 14 cues.
+
+**CC** toggles `showSubtitles`. The choice is saved in `localStorage` (`roastme.subtitles`); default on.

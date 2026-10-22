@@ -7,15 +7,13 @@ Found by reading the code (October 2026). Remove items as they're fixed and add 
 
 ## Bugs
 
-### Build output is tracked in git
-13 files under `.output/` are committed, even though `.output` is in `.gitignore` (they were added before the ignore rule). Every `npm run generate` shows them as changed. Fix: `git rm -r --cached .output`. Check first that no deploy step relies on the committed copy.
+_None open._
 
 ## Gaps
-- **No auth or rate limiting** on a function that makes 3 paid calls per request. See [[Cost & Limits]].
-- **No automated tests.** See [[Testing]].
+- **No auth**, and the rate limit is per instance and in memory only, on a function that makes 3 paid calls per request. See [[Cost & Limits]].
+- **No frontend tests.** The backend animation and rate-limit code is tested. See [[Testing]].
 - **Preview Gemini models** may change or be retired. See [[Cost & Limits]].
-- **Camera denied = dead end:** only an `alert()`, with no photo upload option. See [[Camera Capture]].
-- **Heavy console logging in dev.** Production builds strip `console.log`, but warnings and errors remain.
+- **Console logging in dev.** The per-frame and response-dump logs are gone, but other `console.log` calls remain. Production builds strip them.
 - **The ~29 MB model** is downloaded on every first visit. Consider Draco/Meshopt compression.
 
 ## Unused but kept on purpose
@@ -25,6 +23,14 @@ Found by reading the code (October 2026). Remove items as they're fixed and add 
 
 ## Fixed (October 2026)
 For reference. Docs: `README.md` and `composables/animation/README.md` rewritten from the code to match this vault.
+
+Fourth round:
+- `fix_invalid_animation_name` only fixed camelCase names on its hand-written list (the first-round fix was partial), so e.g. `walkRelaxedStart` became `idle`. Any camelCase form of a valid name is now converted. Found by the new tests.
+- Camera denied was a dead end (`alert()` only). Photo upload is now offered, and is the main action when there's no camera.
+- No automated tests: backend unit tests now run in CI.
+- No rate limiting: per-IP limit in the function plus `--max-instances 10`.
+- 13 build-output files under `.output/` were committed despite `.gitignore`. Untracked.
+- Also added: photo countdown and retake, autoplay, subtitles.
 
 Third round:
 - Users couldn't tell that only the snapshot was roasted or what to do while waiting. The camera screen and the waiting overlay now say so, show the snapshot and the time waited, point to **Play**, and allow cancelling.

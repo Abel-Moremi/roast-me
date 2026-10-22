@@ -17,3 +17,7 @@ Most choices below can be seen in the code, but **their reasons were never writt
 | When the API is unreachable or returns 5xx, show a labelled sample roast instead of an error | `useRoastApi.js` | _unknown_ |
 | Nuxt as a static site with no SSR, everything inside `<ClientOnly>` | `app.vue`, deploy workflow | _unknown_ |
 | Preview Gemini models | `functions/config.py` | _unknown_ |
+| Rate limit kept in each instance's memory, plus `--max-instances 10` | `functions/utils/rate_limit.py`, deploy workflow | October 2026: stops one person hammering the paid calls without adding a database or other GCP resource. Trade-off: not shared between instances. Values (20/hour, 10 instances) are a first guess; tune from real traffic. |
+| Backend tests use `unittest`, not pytest | `functions/tests/` | October 2026: standard library only, so CI and contributors need no install. pytest still runs them. |
+| Subtitle timing estimated from text length | `composables/useSubtitles.js` | October 2026: the API has no per-line timestamps. Good enough for captions without changing the backend. Real timing would need TTS word timestamps or one TTS call per line. |
+| Autoplay the roast, with Play as fallback | `app.vue` | October 2026: users didn't know they had to press Play. The confirm click unlocks audio. |

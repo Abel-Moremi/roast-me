@@ -93,7 +93,8 @@
               <button 
                 @click="toggleAudio"
                 :disabled="audioLoading"
-                class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm flex-1"
+                class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm flex-1"
+                :class="{ 'animate-pulse ring-2 ring-red-400': awaitingFirstPlay && !isPlaying }"
               >
                 <span v-if="audioLoading">Loading...</span>
                 <span v-else-if="isPlaying">⏸ Pause</span>
@@ -108,7 +109,20 @@
               >
                 10s ⏩
               </button>
+
+              <button
+                @click="toggleSubtitles"
+                class="px-3 py-2 rounded-lg transition-colors text-sm font-bold"
+                :class="showSubtitles ? 'bg-white text-black' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'"
+                :title="showSubtitles ? 'Hide subtitles' : 'Show subtitles'"
+                :aria-pressed="showSubtitles"
+              >
+                CC
+              </button>
             </div>
+            <p v-if="awaitingFirstPlay && !isPlaying && !audioLoading" class="text-gray-300 text-xs text-center">
+              Press ▶ Play to start the show
+            </p>
             
             <span v-if="audioError" class="text-red-400 text-xs text-center">{{ audioError }}</span>
             
@@ -134,6 +148,17 @@
         </div>
       </div>
       
+      <!-- Subtitles: the line being spoken (timing estimated from text length) -->
+      <div
+        v-if="showSubtitles && currentSubtitle"
+        class="fixed left-4 right-4 md:right-96 bottom-60 md:bottom-8 z-40 flex justify-center pointer-events-none"
+        aria-live="polite"
+      >
+        <p class="bg-black/80 text-white text-base md:text-lg leading-snug px-4 py-2 rounded-lg max-w-2xl text-center shadow-2xl">
+          {{ currentSubtitle }}
+        </p>
+      </div>
+
       <!-- Analyzing State -->
       <div v-if="isAnalyzing" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50 w-[calc(100vw-2rem)] max-w-sm">
         <div class="bg-black/90 backdrop-blur-md border border-red-900/70 rounded-lg p-6 shadow-2xl">
@@ -164,8 +189,7 @@
             <p class="text-gray-500 text-xs font-mono">Waiting {{ formatTime(analyzingSeconds) }}</p>
 
             <p class="text-gray-300 text-xs text-center border-t border-red-900/50 pt-3 w-full">
-              Nothing to do while you wait. When it's ready, press
-              <span class="text-white font-bold">▶ Play</span> (bottom right) to start the show.
+              Nothing to do while you wait. The show starts by itself when it's ready.
             </p>
 
             <button
@@ -246,6 +270,7 @@
 import { ref, watch, onBeforeUnmount } from 'vue'
 import { useAnimationAudioSync } from '@/composables/useAnimationAudioSync'
 import { useRoastApi } from '@/composables/useRoastApi'
+import { useSubtitles } from '@/composables/useSubtitles'
 import { useLoadingState } from '@/composables/useLoadingState'
 
 // Initialize loading state manager
@@ -310,6 +335,12 @@ onBeforeUnmount(() => clearInterval(analyzingTimer))
 const currentTime = ref(0)
 const duration = ref(0)
 
+// True from when a roast is ready until it's first played. Autoplay normally
+// starts it; if the browser blocks that, the Play button is highlighted.
+const awaitingFirstPlay = ref(false)
+
+const { showSubtitles, currentSubtitle, toggleSubtitles } = useSubtitles(roastData, currentTime, duration)
+
 // Initialize sync controller
 const { 
   initialize: initSync,
@@ -337,19 +368,6 @@ const AUDIO_STATES = {
   LOADING: 'loading'
 }
 let audioState = AUDIO_STATES.STOPPED
-
-// Debug watchers to see if sync values are updating
-watch(() => syncAnimation.value, (newVal, oldVal) => {
-  if (newVal !== oldVal) {
-    console.log(`📊 [app.vue] syncAnimation updated: "${oldVal}" → "${newVal}"`)
-  }
-})
-
-watch(() => syncExpression.value, (newVal, oldVal) => {
-  if (newVal !== oldVal) {
-    console.log(`📊 [app.vue] syncExpression updated: "${oldVal}" → "${newVal}"`)
-  }
-})
 
 // ============================================
 // LOADING HANDLERS
@@ -393,8 +411,37 @@ function handleLoadingComplete() {
 const { requestRoast } = useRoastApi()
 
 async function handleImageCaptured(base64Image) {
+  // Still inside the user's click, so the browser lets us unlock audio now
+  // and autoplay the roast later
+  unlockAudio()
   capturedImage.value = base64Image
   await fetchRoast()
+}
+
+/**
+ * Create/resume the AudioContext. Must be called from a user gesture
+ * (click), otherwise browsers keep it suspended and autoplay is silent.
+ */
+function unlockAudio() {
+  try {
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)()
+    }
+    if (audioContext.state === 'suspended') {
+      audioContext.resume().catch(() => {})
+    }
+  } catch (error) {
+    console.warn('Could not unlock audio:', error)
+  }
+}
+
+/**
+ * Start the roast as soon as it's ready, if the browser allowed audio.
+ * Otherwise leave it to the (highlighted) Play button.
+ */
+function autoPlayWhenReady() {
+  if (!roastData.value?.audio || audioContext?.state !== 'running') return
+  playAudio()
 }
 
 /**
@@ -432,88 +479,40 @@ async function fetchRoast() {
 }
 
 function handleRoastReceived(data, requestId = roastRequestId) {
-  console.log('🎬 handleRoastReceived called')
-  console.log('🎬 data type:', typeof data)
-  console.log('🎬 data is null?', data === null)
-  console.log('🎬 data is undefined?', data === undefined)
-  
-  if (data) {
-    console.log('🎬 data keys:', Object.keys(data).sort())
-    console.log('🎬 data.animationScript type:', typeof data.animationScript)
-    console.log('🎬 data.animationScript is null?', data.animationScript === null)
-    console.log('🎬 data.animationScript is undefined?', data.animationScript === undefined)
-    
-    // Check each property
-    console.log('🎬 Properties check:')
-    console.log('  - has animationScript?', 'animationScript' in data)
-    console.log('  - has audio?', 'audio' in data)
-    console.log('  - has audioMimeType?', 'audioMimeType' in data)
-    console.log('  - has data?', 'data' in data)
-    console.log('  - has success?', 'success' in data)
-    
-    if (data.animationScript) {
-      console.log('🎬 animationScript.timeline exists?', !!data.animationScript.timeline)
-      if (data.animationScript.timeline) {
-        console.log('🎬 Timeline frames count:', data.animationScript.timeline.length)
-      }
-    }
-  }
-  
   // 1.5 second delay for comedic timing
   setTimeout(() => {
     // Ignore if the user reset or re-roasted during the comic-timing pause
     if (requestId !== roastRequestId) return
-    console.log('🎬 Inside setTimeout - initializing sync')
     roastData.value = data
-    // Keep analyzing state while decoding audio
     audioError.value = null
     audioBuffer = null
     audioState = AUDIO_STATES.STOPPED
     pausedAt = 0
     currentTime.value = 0
     duration.value = 0
-    
-    // Initialize animation-audio sync controller with animation script
-    if (data?.animationScript) {
-      console.log('🎬 animationScript found, preparing to initialize sync')
-      const audioData = data.audio || data.animationScript?.audio
-      if (audioData) {
-        try {
-          // Decode to get actual duration
-          const binaryString = atob(audioData)
-          const bytes = new Uint8Array(binaryString.length)
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i)
-          }
-          const sampleRate = 24000
-          const numSamples = bytes.length / 2
-          const audioDuration = numSamples / sampleRate
-          
-          console.log('🎬 Initializing sync controller with duration:', audioDuration)
-          console.log('🎬 About to call initSync with script:', data.animationScript)
-          initSync(data.animationScript, audioDuration)
-          console.log('🎬 initSync called successfully')
-          
-          // Only mark as not analyzing AFTER everything is ready
-          isAnalyzing.value = false
-        } catch (error) {
-          console.error('Error decoding audio:', error)
-          audioError.value = 'Failed to decode audio'
-          isAnalyzing.value = false
-        }
-      } else {
-        console.log('🎬 No audio data found')
-        isAnalyzing.value = false
+    awaitingFirstPlay.value = !!data?.audio
+
+    const audioData = data?.audio || data?.animationScript?.audio
+    if (data?.animationScript && audioData) {
+      try {
+        // Measure the real audio length from the PCM size (16-bit mono, 24 kHz)
+        const sampleRate = 24000
+        const audioDuration = (atob(audioData).length / 2) / sampleRate
+        initSync(data.animationScript, audioDuration)
+      } catch (error) {
+        console.error('Error decoding audio:', error)
+        audioError.value = 'Failed to decode audio'
       }
-    } else {
-      console.log('🎬 No animationScript in data')
-      isAnalyzing.value = false
     }
+
+    isAnalyzing.value = false
+    autoPlayWhenReady()
   }, 1500)
 }
 
 async function reRoast() {
   if (!capturedImage.value || isAnalyzing.value) return
+  unlockAudio()
   
   // Stop any playing audio
   if (audioSource) {
@@ -743,6 +742,12 @@ async function startAudioPlayback() {
   }
   
   try {
+    // The context may have been created outside a click (or suspended by
+    // the browser); Play is a click, so resuming here is allowed
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume()
+    }
+
     audioSource = audioContext.createBufferSource()
     audioSource.buffer = audioBuffer
 
@@ -764,6 +769,7 @@ async function startAudioPlayback() {
     // Mark as playing before starting to avoid race conditions
     audioState = AUDIO_STATES.PLAYING
     isPlaying.value = true
+    awaitingFirstPlay.value = false
     
     // Notify sync controller that audio is playing
     setSyncPlaying(true)
@@ -889,14 +895,8 @@ function updateProgress() {
   if (isPlaying.value && audioContext) {
     currentTime.value = audioContext.currentTime - startTime
     
-    // Update animation sync controller
-    const syncState = updateSync(currentTime.value)
-    if (syncState) {
-      // Emit animation state update to ComedyClubScene
-      console.log(`✅ [updateProgress] Sync state returned: animation="${syncState.animation}", expression="${syncState.expression}"`)
-    } else {
-      console.log(`❌ [updateProgress] No sync state at ${currentTime.value.toFixed(2)}s`)
-    }
+    // Drives the animation/expression props passed to ComedyClubScene
+    updateSync(currentTime.value)
     
     if (currentTime.value < duration.value) {
       animationFrameId = requestAnimationFrame(updateProgress)
@@ -1017,5 +1017,6 @@ function reset() {
   startTime = 0
   showRoastModal.value = false
   showPhotoModal.value = false
+  awaitingFirstPlay.value = false
 }
 </script>
