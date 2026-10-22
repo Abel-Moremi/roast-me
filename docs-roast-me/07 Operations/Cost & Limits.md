@@ -27,7 +27,7 @@ Gen 2, `us-central1`, 2 GB memory, 540 s timeout, **`--max-instances 10`**. Conc
 
 Cheap first steps:
 1. `--max-instances` and a per-IP limit: done.
-2. Set a budget alert on the GCP project and a quota on the Gemini API key (console settings, not in this repo).
+2. Set a budget alert on the GCP project and a quota on the Gemini API key (console settings, not in this repo). When the key's quota runs out, users see an "out of roasts" panel instead of a generic failure (see [[API Contract]]); check the function logs for `Gemini quota exceeded`.
 3. Then consider App Check / Firebase Auth, or a shared rate limit (e.g. Firestore) if the in-memory one isn't enough. Both add GCP resources, so ask first.
 
 ## Model risk

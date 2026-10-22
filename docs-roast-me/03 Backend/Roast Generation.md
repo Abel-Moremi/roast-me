@@ -27,12 +27,13 @@ Persona: a "brutally honest comedian with the personality of an annoyed older br
 
 ## Fallbacks when parsing goes wrong
 In order:
-1. If the call with `response_schema` throws, retry **without** the schema, adding "return ONLY valid JSON with these fields" to the prompt.
-2. No candidates → `ValueError("Response blocked by safety filters")` → HTTP 400.
-3. `response.parsed` is `None` → try `json.loads` on each text part.
-4. If the output was cut off (`finish_reason == "MAX_TOKENS"`), try closing open quotes, brackets and braces.
-5. Try extracting from a <code>```json</code> or <code>```</code> block.
-6. All failed → `ValueError("Failed to parse roast data ...")` → HTTP 400.
+1. If the call with `response_schema` throws a quota error, raise `QuotaExceededError` straight away (a retry would fail too and use another request). See [[Entry Point & Errors]].
+2. If it throws anything else, retry **without** the schema, adding "return ONLY valid JSON with these fields" to the prompt.
+3. No candidates → `ValueError("Response blocked by safety filters")` → HTTP 400.
+4. `response.parsed` is `None` → try `json.loads` on each text part.
+5. If the output was cut off (`finish_reason == "MAX_TOKENS"`), try closing open quotes, brackets and braces.
+6. Try extracting from a <code>```json</code> or <code>```</code> block.
+7. All failed → `ValueError("Failed to parse roast data ...")` → HTTP 400.
 
 ## Narration
 `build_narration_text()` joins the fields into the single string that is spoken and sent to the animation step:

@@ -14,6 +14,7 @@ if __name__ != "__main__":
 
 from google.genai import types
 import config
+from utils.gemini_errors import as_quota_error
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,10 @@ def generate_tts_audio(client, text):
         
     Returns:
         str or None: Base64-encoded audio data, or None if generation fails
+
+    Raises:
+        QuotaExceededError: If the API key's quota is used up, so the caller
+            can tell the user why there's no audio
     """
     try:
         logger.info("Generating TTS audio")
@@ -74,6 +79,10 @@ def generate_tts_audio(client, text):
         return audio_base64
 
     except Exception as e:
+        quota_error = as_quota_error(e)
+        if quota_error:
+            logger.warning(f"Gemini quota exceeded during TTS: {e}")
+            raise quota_error from e
         logger.exception(f"TTS generation failed: {e}")
         return None
 

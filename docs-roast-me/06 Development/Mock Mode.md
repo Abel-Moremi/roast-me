@@ -9,7 +9,7 @@ The frontend can run without the backend by playing a saved API response.
 `composables/useRoastApi.js` → `requestRoast()`:
 - `VITE_ROAST_API_URL` is empty, unset or contains `your-` → mock straight away (`reason: 'not-configured'`)
 - The request throws (network, CORS) or returns 5xx → mock (`reason: 'api-failed'`)
-- **4xx is not mocked:** the API's `{ success: false, error }` is passed through and shown, because it means the photo itself was rejected
+- **4xx is not mocked:** the API's `{ success: false, error }` is passed through and shown, because it means the photo was rejected, the user was rate-limited, or the API key's quota ran out. For a quota error the user can still choose **Watch a sample roast instead**, which loads the mock (see [[App Shell & State]]).
 
 `requestRoast` returns `{ data, source: 'api' | 'mock', reason }`. `composables/useMockRoast.js` fetches `/mock/output.txt`, i.e. `public/mock/output.txt`. If that fails too, `data` is `null` and `app.vue` shows an error and brings the camera back.
 

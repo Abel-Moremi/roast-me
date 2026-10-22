@@ -14,6 +14,7 @@ python -m unittest discover -s tests -v    # pytest also works if you have it
 | File | Covers |
 | --- | --- |
 | `test_animation.py` | The fallback script validates for 3–120 s; sit lock and walk-order rules; bad timing; name fixing (camelCase, unknown → `idle`); intensity clamping; sanitize-then-validate; **every backend animation has a matching frontend `ANIMATION_STATES` key and clip, and every backend expression exists in `ComedyClubScene.vue`** (parsed from the source files) |
+| `test_gemini_errors.py` | Quota detection (`429` / `RESOURCE_EXHAUSTED`), daily vs per-minute from the quota id, conversion to `QuotaExceededError` |
 | `test_rate_limit.py` | `RateLimiter` window, per-client counting, `0` disables; `client_ip` header handling |
 
 CI runs them on every pull request and push to `main` (`.github/workflows/tests.yml`, see [[Deployment]]). `.gcloudignore` keeps `tests/` out of the deployed function.

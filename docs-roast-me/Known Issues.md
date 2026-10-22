@@ -24,6 +24,9 @@ _None open._
 ## Fixed (October 2026)
 For reference. Docs: `README.md` and `composables/animation/README.md` rewritten from the code to match this vault.
 
+Fifth round:
+- When the Gemini API key's quota ran out, the user got the sample roast with "service unavailable" (a generic 500), and the roast call was retried, using another request. Quota errors are now detected: the user sees "out of roasts for now" with try-again timing, or a text-only notice if only the voice ran out.
+
 Fourth round:
 - `fix_invalid_animation_name` only fixed camelCase names on its hand-written list (the first-round fix was partial), so e.g. `walkRelaxedStart` became `idle`. Any camelCase form of a valid name is now converted. Found by the new tests.
 - Camera denied was a dead end (`alert()` only). Photo upload is now offered, and is the main action when there's no camera.

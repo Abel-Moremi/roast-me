@@ -17,7 +17,7 @@ The first `inline_data` part, base64-encoded. It is **raw PCM**: 16-bit signed l
 `get_audio_duration(audio_base64)` = decoded bytes ÷ 2 ÷ 24 000. This real length is what the animation timeline is planned against (see [[Animation Script Pipeline]]).
 
 ## Failure
-Any exception → logged, returns `None`. The response then has no `audio` and the UI shows the roast without playback controls.
+Any exception → logged, returns `None`. The response then has no `audio` and the UI shows the roast without playback controls. **Except a quota error**: that raises `QuotaExceededError`, so `main.py` can add a `VOICE_QUOTA_EXCEEDED` notice and the UI says why there's no voice. See [[Entry Point & Errors]].
 
 ## Audio test mode
 With `ENABLE_AUDIO_TEST=true`, each generated clip is also saved to:

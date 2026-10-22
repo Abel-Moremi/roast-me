@@ -18,7 +18,7 @@ A single-page web app. There are no accounts, pages or routes, just one screen.
 6. **Controls.** Play/pause, ±10 s skip, **CC** (subtitles on/off, remembered in the browser), click the progress bar to seek, **Roast Again** (same photo, new roast) and **Reset** (back to the camera).
 7. **Zoom.** Clicking the right frame opens the photo full screen. Clicking the left frame opens the roast text: the overall vibe, every roast line and the one-liner.
 
-If the API is down, the app plays a bundled sample roast with a yellow notice saying so. See [[Mock Mode]]. If the API rejects the photo (bad image, blocked by safety filters, too many roasts from the same IP), or the sample can't load either, an error banner shows and the camera comes back.
+If the API is down, the app plays a bundled sample roast with a yellow notice saying so. See [[Mock Mode]]. If the Gemini API key's request limit is reached, a panel says so ("OUT OF ROASTS FOR NOW", try again tomorrow or in a minute) and offers a sample roast instead. If only the voice hit the limit, the roast is shown as text with a notice. If the API rejects the photo (bad image, blocked by safety filters, too many roasts from the same IP), or the sample can't load either, an error banner shows and the camera comes back.
 
 ## What the roast contains
 See [[API Contract]]. In short: an overall vibe, 8–12 roast lines, a one-liner, a confidence rating and style tags. The wall frame shows the vibe, as many lines as fit, the one-liner, the confidence rating and the style tags. The popup shows the vibe, every line and the one-liner.

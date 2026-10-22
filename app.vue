@@ -54,6 +54,39 @@
         </div>
       </div>
 
+      <!-- Gemini API key's request limit reached -->
+      <div v-if="quotaError" class="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+        <div class="pointer-events-auto bg-black/90 backdrop-blur-md border border-yellow-600/80 rounded-lg p-6 shadow-2xl w-full max-w-sm text-center" role="alert">
+          <p class="text-3xl mb-2">🎤😮‍💨</p>
+          <p class="text-yellow-400 text-lg font-bold">OUT OF ROASTS FOR NOW</p>
+          <p class="text-gray-300 text-sm mt-2">{{ quotaError.message }}</p>
+          <p class="text-gray-500 text-xs mt-2">
+            The app's Gemini API key has a request limit, and it's been reached. Your photo wasn't roasted.
+          </p>
+          <div class="flex flex-col gap-2 mt-5">
+            <button
+              v-if="quotaError.period === 'minute'"
+              @click="retryAfterQuota"
+              class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-bold"
+            >
+              Try again
+            </button>
+            <button
+              @click="watchSampleRoast"
+              class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors text-sm"
+            >
+              Watch a sample roast instead
+            </button>
+            <button
+              @click="reset"
+              class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors text-sm"
+            >
+              Back to camera
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Notice when the roast shown is the bundled sample -->
       <div v-if="roastNotice && roastData" class="fixed top-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
         <div class="bg-black/80 border border-yellow-700/70 rounded-lg px-4 py-2 text-yellow-300 text-xs shadow-2xl">
@@ -270,6 +303,7 @@
 import { ref, watch, onBeforeUnmount } from 'vue'
 import { useAnimationAudioSync } from '@/composables/useAnimationAudioSync'
 import { useRoastApi } from '@/composables/useRoastApi'
+import { useMockRoast } from '@/composables/useMockRoast'
 import { useSubtitles } from '@/composables/useSubtitles'
 import { useLoadingState } from '@/composables/useLoadingState'
 
@@ -309,6 +343,8 @@ const isPlaying = ref(false)
 const audioError = ref(null)
 const roastError = ref(null)
 const roastNotice = ref(null) // shown when a sample (mock) roast is used
+// Set when the Gemini API key's request limit is reached: { message, period }
+const quotaError = ref(null)
 
 // Increments on every roast request and on reset, so responses that arrive
 // after the user has moved on are ignored
@@ -453,6 +489,7 @@ async function fetchRoast() {
   isAnalyzing.value = true
   roastError.value = null
   roastNotice.value = null
+  quotaError.value = null
 
   const { data, source, reason } = await requestRoast(capturedImage.value)
 
@@ -465,17 +502,58 @@ async function fetchRoast() {
         ? "The roast service is unavailable right now, so here's a sample roast."
         : 'Demo mode: this is a sample roast (no roast API configured).'
     }
+    // The roast text worked but the voice hit the API key's limit
+    const voiceQuota = data.notices?.find(n => n.code === 'VOICE_QUOTA_EXCEEDED')
+    if (voiceQuota) {
+      roastNotice.value = `${voiceQuota.message} Click the roast frame on the wall to read it.`
+    }
     handleRoastReceived(data, requestId)
     return
   }
 
-  console.error('No usable roast response:', data)
   isAnalyzing.value = false
+
+  // The API key's request limit: keep the photo and offer options instead
+  // of just bouncing back to the camera
+  if (data?.code === 'QUOTA_EXCEEDED') {
+    console.warn('Gemini quota exceeded:', data.quotaPeriod)
+    quotaError.value = { message: data.error, period: data.quotaPeriod || null }
+    return
+  }
+
+  console.error('No usable roast response:', data)
+  // Coded errors (e.g. RATE_LIMITED) already carry a full sentence
   roastError.value = data?.error
-    ? `Roast failed: ${data.error}`
+    ? (data.code ? data.error : `Roast failed: ${data.error}`)
     : 'Failed to generate roast. Please try again.'
   // Bring the camera back so the user can retry
   capturedImage.value = null
+}
+
+const { loadMockData } = useMockRoast()
+
+/** Quota panel: play the bundled sample roast with the current photo. */
+async function watchSampleRoast() {
+  unlockAudio()
+  quotaError.value = null
+  const requestId = ++roastRequestId
+  isAnalyzing.value = true
+  const data = await loadMockData()
+  if (requestId !== roastRequestId) return
+  if (!data?.success) {
+    isAnalyzing.value = false
+    roastError.value = "Couldn't load the sample roast either. Please try again later."
+    capturedImage.value = null
+    return
+  }
+  roastNotice.value = "Sample roast: the live roast has hit its usage limit, so this isn't about your photo."
+  handleRoastReceived(data, requestId)
+}
+
+/** Quota panel, per-minute limit: send the same photo again. */
+function retryAfterQuota() {
+  unlockAudio()
+  fetchRoast()
 }
 
 function handleRoastReceived(data, requestId = roastRequestId) {
@@ -978,6 +1056,7 @@ function reset() {
   roastRequestId++
   roastNotice.value = null
   roastError.value = null
+  quotaError.value = null
 
   // Clean up audio source
   if (audioSource) {

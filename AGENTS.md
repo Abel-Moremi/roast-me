@@ -45,6 +45,7 @@ A change isn't done until the docs describe it. Same commit or PR, not "later".
 | `useBlinking.js`, `useJawMovement.js`, `useMouthAnimation.js` | `04 Frontend/Face & Lip Sync.md` |
 | `useRoastApi.js`, `useMockRoast.js`, `public/mock/*` | `06 Development/Mock Mode.md` |
 | `useSubtitles.js` | `04 Frontend/Audio Playback.md` (and keep it in step with `build_narration_text` in `roast_service.py`) |
+| `functions/utils/gemini_errors.py` | `03 Backend/Entry Point & Errors.md`, `02 Architecture/API Contract.md` |
 | `functions/utils/rate_limit.py` | `03 Backend/Entry Point & Errors.md`, `07 Operations/Cost & Limits.md` |
 | `functions/tests/*` | `06 Development/Testing.md` |
 | `public/comedian.glb` | `05 Character & Assets/comedian.glb.md` + both catalogues |

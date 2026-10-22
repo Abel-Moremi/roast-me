@@ -142,6 +142,7 @@ Pull requests also run the backend tests (`tests.yml`) and the docs check (`docs
 | The same roast every time, with a yellow "sample roast" notice | `ROAST_API_URL` secret missing at build time, or the function is down or returning 5xx. Check the function logs: `gcloud functions logs read roast_me --region us-central1`. |
 | "Roast failed: …" banner | The API rejected the photo (unreadable image, or Gemini's safety filters). The message says which. |
 | "That's a lot of roasts! Try again in about N minutes." | The per-IP rate limit (`RATE_LIMIT_PER_HOUR`) was hit. |
+| "OUT OF ROASTS FOR NOW" panel, or "the comedian's voice has hit its Gemini usage limit" | The Gemini API key's request quota is used up (daily or per minute; the message says which). Check usage in Google AI Studio, or raise the key's limit. |
 | Camera doesn't start | The page must be on HTTPS or `localhost`, and camera permission must be granted. Users can upload a photo instead. |
 | Loader says "The comedian missed his cue" | `comedian.glb` failed to download. Check the network tab and reload. |
 | No Play button after a roast | Text-to-speech failed. The roast is still shown, so check the function logs. |
